@@ -1,46 +1,43 @@
 import yfinance as yf
 
+import glob
+import os
+
 import findspark
 findspark.init("C:\Program Files\spark-3.5.3-bin-hadoop3")
 
 import pyspark as ps
 from pyspark.sql import SparkSession
 
-class Dataframe:
-    
-    def __init__(self, name):
-        self._name = name
-        
-    def get_name(self):
-        return self._name
-    
-aapl_data = yf.Ticker("AAPL")
-aapl_obj = Dataframe("apple.csv")
-aapl_data.history(period = "1mo").to_csv(aapl_obj.get_name())
+from DataFrame import DataframeClass
 
-pfe_data = yf.Ticker("PFE")
-pfe_obj = Dataframe("pfizer.csv")
-pfe_data.history(period = "1mo").to_csv(pfe_obj.get_name())
 
-f_data = yf.Ticker("F")
-f_obj = Dataframe("ford.csv")
-f_data.history(period = "1mo").to_csv(f_obj.get_name())
+# aapl = yf.Ticker("AAPL").history(period="1y")
+# aapl.to_csv("apple.csv")
+# msft = yf.Ticker("MSFT").history(period="1y")
+# msft.to_csv("microsoft.csv")
+# ba = yf.Ticker("BA").history(period="1y")
+# ba.to_csv("boeing.csv")
+# f = yf.Ticker("F").history(period="1y")
+# f.to_csv("ford.csv")
+# pfe = yf.Ticker("PFE").history(period="1y")
+# pfe.to_csv("pfizer.csv")
 
-msft_data = yf.Ticker("MSFT")
-msft_obj = Dataframe("microsoft.csv")
-msft_data.history(period = "1mo").to_csv(msft_obj.get_name())
+def head_and_tail_40(df):
+    head_40 = df.limit(40)
+    tail_40 = df.orderBy("Date", ascending=False).limit(40).orderBy("Date", ascending=True)
+    return head_40.union(tail_40)
 
-ba_data = yf.Ticker("BA")
-ba_obj = Dataframe("boeing.csv")
-ba_data.history(period = "1mo").to_csv(ba_obj.get_name())
+dataframe_obj = DataframeClass()
 
-spark = SparkSession.builder.appName("CSV Operations").config("spark.driver.host", "localhost").getOrCreate()
+csv_folder_path = 'Stocks_Price'
+csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
-data_df_aapl = spark.read.csv(aapl_obj.get_name(), header=True, inferSchema=True)
-data_df_pfe = spark.read.csv(pfe_obj.get_name(), header=True, inferSchema=True)
-data_df_f = spark.read.csv(f_obj.get_name(), header=True, inferSchema=True)
-data_df_msft = spark.read.csv(msft_obj.get_name(), header=True, inferSchema=True)
-data_df_ba = spark.read.csv(ba_obj.get_name(), header=True, inferSchema=True)
+data_df = dataframe_obj.read_multiple_csv(csv_files)
 
-data_df_aapl.printSchema()
-data_df_aapl.show(10)
+# dataframe_obj.print_schemas()
+
+result = dataframe_obj.perform_operation_on_each(head_and_tail_40)
+for idx, res in enumerate(result):
+    print(f"Result for dataframe {idx+1}:")
+    res.show(80)
