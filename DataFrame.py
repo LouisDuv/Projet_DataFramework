@@ -35,9 +35,9 @@ class DataframeClass:
             print(f"Schema of DataFrame {idx + 1}:")
             df.printSchema()
 
-    def perform_operation_on_each(self, operation):
+    def perform_operation_on_each(self, operation, *args):
         results = []
-        for df in self.dataframes:
-            result = operation(df)
+        for idx, df in enumerate(self.dataframes):
+            result = operation(df, idx, *args)
             results.append(result)
         return results

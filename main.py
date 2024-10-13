@@ -9,6 +9,7 @@ import pandas as pd
 
 from pyspark.sql import functions as sf
 from pyspark.sql.types import NumericType
+from pyspark.sql import DataFrame
 
 from DataFrame import DataframeClass
 
@@ -27,15 +28,20 @@ from collections import Counter
 # pfe = yf.Ticker("PFE").history(period="1y")
 # pfe.to_csv("pfizer.csv")
 
-def head_and_tail_40(df):
+def head_and_tail_40(df: DataFrame, df_idx: int):
     head_40 = df.limit(40)
     tail_40 = df.orderBy("Date", ascending=False).limit(40).orderBy("Date", ascending=True)
-    return head_40.union(tail_40)
+    result = head_40.union(tail_40)
+    print(f"Dataframe {df_idx+1}, first and last 40 rows:")
+    result.show(80)
+    return result
 
-def num_observations(df):
-    return df.count()
+def num_observations(df: DataFrame, df_idx: int):
+    result = df.count()
+    print(f"Dataframe {df_idx+1}, number of observations: {result}")
+    return result
 
-def descript_stats(df):
+def descript_stats(df: DataFrame, df_idx: int):
     agg_expr = []
     for column in df.columns:
         agg_expr.append(sf.min(column).alias(f"min_{column}"))
@@ -43,9 +49,11 @@ def descript_stats(df):
         if isinstance(df.schema[column].dataType, NumericType):
             agg_expr.append(sf.stddev(column).alias(f"stddev_{column}"))
     result = df.agg(*agg_expr)
+    print(f"Dataframe {df_idx+1}, descriptive stats:")
+    result.show()
     return result
 
-def count_missing(df):
+def count_missing(df: DataFrame, df_idx: int):
     missing_expr = []
     for column in df.columns:
         if isinstance(df.schema[column].dataType, NumericType):
@@ -56,7 +64,15 @@ def count_missing(df):
             missing_expr.append(
                 sf.count(sf.when(sf.col(column).isNull(), column)).alias(f"missing_{column}")
             )
-    return df.select(missing_expr)
+    result = df.select(missing_expr)
+    print(f"Dataframe {df_idx+1}, missing values:")
+    result.show()
+    return result
+
+def column_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
+    correlation = df.stat.corr(col1, col2)
+    print(f"Dataframe {df_idx+1}, correlation between {col1} and {col2}: {correlation}")
+    return correlation
 
 
 def differenceBtwDays(df):
@@ -145,15 +161,12 @@ dataframe_obj = DataframeClass()
 csv_folder_path = 'Stocks_Price'
 csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
-data_df = dataframe_obj.read_multiple_csv(csv_files)
-
 my_fre = period_btw_data(data_df[1])
 
 print(my_fre)
 
-#result = dataframe_obj.perform_operation_on_each(count_missing)
-#for idx, res in enumerate(result):
- #   print(f"Result for dataframe {idx+1}:")
-  #  res.show()
+data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-
+result = dataframe_obj.perform_operation_on_each(column_correlation, "Open", "Close")
+# for idx, res in enumerate(result):
+#     print(f"Result for dataframe {idx+1}:")    
