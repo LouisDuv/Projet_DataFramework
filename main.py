@@ -67,9 +67,10 @@ def count_missing(df: DataFrame, df_idx: int):
     result.show()
     return result
 
-def column_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
+def values_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
     correlation = df.stat.corr(col1, col2)
     print(f"Dataframe {df_idx+1}, correlation between {col1} and {col2}: {correlation}")
+    #interesting: correlation between (close-open) and volume
     return correlation
 
 dataframe_obj = DataframeClass()
@@ -79,6 +80,8 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = dataframe_obj.perform_operation_on_each(column_correlation, "Open", "Close")
+result = dataframe_obj.perform_operation_on_each(values_correlation, "Close", "Volume")
+print("\n\n")
+result = dataframe_obj.perform_operation_on_each(values_correlation, "High", "Low")
 # for idx, res in enumerate(result):
 #     print(f"Result for dataframe {idx+1}:")    
