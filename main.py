@@ -10,6 +10,7 @@ import pandas as pd
 from pyspark.sql import functions as sf
 from pyspark.sql.types import NumericType
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import avg
 
 from DataFrame import DataframeClass
 
@@ -27,6 +28,15 @@ from collections import Counter
 # f.to_csv("ford.csv")
 # pfe = yf.Ticker("PFE").history(period="1y")
 # pfe.to_csv("pfizer.csv")
+
+# About DFs :
+
+#High : Le prix le plus élevé atteint par l'action pendant la journée de bourse
+#Low : Le prix le plus bas atteint par l'action pendant la journée de bourse
+#Close : Le dernier prix auquel l'action a été échangée à la fin de la journée de bourse
+#Open : Le premier prix auquel l'action a été mesurée au début de la journée
+
+
 
 def head_and_tail_40(df: DataFrame, df_idx: int):
     head_40 = df.limit(40)
@@ -98,9 +108,7 @@ def period_btw_data(df):
     counterMonthly = 0
     counterYearly = 0
     counterWeekly = 0
-    counterNaN = 0
     weekDay = []
-    week = ['Mon', 'Tue', 'Wed', 'Thur','Fry', 'Sat', 'Sun']
 
     df_p = df.toPandas()
     df_p = pd.to_datetime(df_p["Date"])
@@ -123,6 +131,7 @@ def period_btw_data(df):
     # Reconnaissance d'un pattern
     counterPattern = 0
     
+    # Si le nombre de pattern inconnu est supérieur à 20% du nb total de donnée 
     if len(weekDay) > 0.2 * df.count():
         day_pattern, counterPattern = most_common_element(weekDay)
     
@@ -155,18 +164,20 @@ def period_btw_data(df):
     else : 
         return "\n[INFO] Erreur dans la lecture de pattern"
 
+def daily_avg_open_price(df, indx):
+    df_avg = df.agg(avg('Open').alias("Average Open"))
+    average_value = df_avg.collect()[0]
+    return float(average_value['Average Open'])
+        
+
 
 dataframe_obj = DataframeClass()
 
 csv_folder_path = 'Stocks_Price'
 csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
-my_fre = period_btw_data(data_df[1])
-
-print(my_fre)
-
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = dataframe_obj.perform_operation_on_each(column_correlation, "Open", "Close")
-# for idx, res in enumerate(result):
-#     print(f"Result for dataframe {idx+1}:")    
+result = dataframe_obj.perform_operation_on_each(daily_avg_open_price)
+
+print(result)
