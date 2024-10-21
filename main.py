@@ -10,7 +10,7 @@ import pandas as pd
 from pyspark.sql import functions as sf
 from pyspark.sql.types import NumericType
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import avg
+from pyspark.sql.functions import avg, month, year
 
 from DataFrame import DataframeClass
 
@@ -164,11 +164,118 @@ def period_btw_data(df):
     else : 
         return "\n[INFO] Erreur dans la lecture de pattern"
 
-def daily_avg_open_price(df, indx):
-    df_avg = df.agg(avg('Open').alias("Average Open"))
-    average_value = df_avg.collect()[0]
-    return float(average_value['Average Open'])
+# str : Open ou Close pour connaitre l'average des prix par jour 
+# Output : average (float)
         
+def daily_avg_price(df, str):
+    if str == "Open" or str == "Close":
+        df_avg = df.agg(avg(str).alias("Average"))
+        average_value = df_avg.collect()[0]
+        return float(average_value['Average'])
+
+def get_month_name(month_number, year):
+    months = [
+        "", 
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sept",
+        "Oct",
+        "Nov",
+        "Dec"
+    ]
+
+    print(month_number)
+    
+    if 1 <= month_number <= 12:
+        return months[month_number] + "-"+ str(year)
+    else : 
+        return -1
+
+# str : Open ou Close pour connaitre l'average des prix par mois 
+# Output : dictionnaire avec clé : mois et valeur : average (Close price ou Open price)
+
+def monthly_avg_price(df, str):
+    
+    if str == "Open" or str == "Close" :
+
+        dictio_avg_month = {}
+        open_df = df.select("Date", str)
+
+        date_open_df = open_df.withColumn("month", month("Date"))
+        date_open_df = date_open_df.withColumn("year", year("Date"))
+
+        initMonth = date_open_df.select("month").first()[0]
+
+        array = []
+  
+        for pos, row in enumerate(date_open_df.collect()):
+            
+            if pos + 1 == len(date_open_df.collect()) : # POS +1 pour gerer l'entete
+
+                initMonth = row.month
+                array.append(getattr(row, str))
+                average = sum(array) / len(array)
+                dictio_avg_month[get_month_name(initMonth, row.year)] = average
+
+            else : 
+                if initMonth == row.month:
+                    array.append(getattr(row, str)) # getattr Accéder à l'attribut de la ligne par le str donnée (Open/Close) 
+            
+                else:
+                    average = sum(array) / len(array)
+                    dictio_avg_month[get_month_name(initMonth, row.year)] = average
+                
+                    array.clear
+                    initMonth = row.month
+                    array.append(getattr(row, str))
+
+        
+        return dictio_avg_month
+
+
+# str : Open ou Close pour connaitre l'average des prix par mois 
+# Output : dictionnaire avec clé : year et valeur : average (Close price ou Open price)
+
+def yearly_avg_price(df, str):
+
+    if str == "Open" or str == "Close" :
+
+        dictio_avg_year = {}
+        open_df = df.select("Date", str)
+
+        date_open_df  = open_df.withColumn("year", year("Date"))
+        initYear= date_open_df.select("year").first()[0]
+
+        array = []
+        for pos, row in enumerate(date_open_df.collect()):
+            
+            if pos + 1 == len(date_open_df.collect()) : # POS +1 pour gerer l'entete
+
+                initYear = row.year
+                array.append(getattr(row, str))
+                average = sum(array) / len(array)
+                dictio_avg_year[initYear] = average
+            
+            else :
+
+                if initYear == row.year:
+                    array.append(getattr(row, str)) # getattr Accéder à l'attribut de la ligne par le str donnée (Open/Close)
+                
+                else :
+                    average = sum(array) / len(array)
+                    dictio_avg_year[initYear] = average
+                    array.clear
+                
+                    initYear = row.year
+                    array.append(getattr(row, str))
+
+        return dictio_avg_year
 
 
 dataframe_obj = DataframeClass()
@@ -178,6 +285,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = dataframe_obj.perform_operation_on_each(daily_avg_open_price)
+result = monthly_avg_price(data_dfs[1], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
 print(result)

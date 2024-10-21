@@ -23,6 +23,7 @@ class DataframeClass:
             StructField("Stock Splits", FloatType(), True)
         ])
         df = self.spark.read.csv(file_path, header=True, schema=schema)
+        print(file_path)
         df = df.withColumn("Date", col("Date").cast(DateType()))
         return df
 
