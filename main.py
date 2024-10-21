@@ -79,9 +79,10 @@ def count_missing(df: DataFrame, df_idx: int):
     result.show()
     return result
 
-def column_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
+def values_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
     correlation = df.stat.corr(col1, col2)
     print(f"Dataframe {df_idx+1}, correlation between {col1} and {col2}: {correlation}")
+    #interesting: correlation between (close-open) and volume
     return correlation
 
 
