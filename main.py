@@ -162,10 +162,6 @@ dataframe_obj = DataframeClass()
 csv_folder_path = 'Stocks_Price'
 csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
-my_fre = period_btw_data(data_df[1])
-
-print(my_fre)
-
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
 result = dataframe_obj.perform_operation_on_each(values_correlation, "Close", "Volume")
