@@ -190,8 +190,6 @@ def get_month_name(month_number, year):
         "Nov",
         "Dec"
     ]
-
-    print(month_number)
     
     if 1 <= month_number <= 12:
         return months[month_number] + "-"+ str(year)
@@ -232,7 +230,7 @@ def monthly_avg_price(df, str):
                     average = sum(array) / len(array)
                     dictio_avg_month[get_month_name(initMonth, row.year)] = average
                 
-                    array.clear
+                    array = []
                     initMonth = row.month
                     array.append(getattr(row, str))
 
@@ -271,7 +269,7 @@ def yearly_avg_price(df, str):
                 else :
                     average = sum(array) / len(array)
                     dictio_avg_year[initYear] = average
-                    array.clear
+                    array = []
                 
                     initYear = row.year
                     array.append(getattr(row, str))
@@ -286,6 +284,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_avg_price(data_dfs[1], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = yearly_avg_price(data_dfs[4], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
 print(result)
