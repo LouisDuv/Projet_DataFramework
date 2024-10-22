@@ -10,7 +10,10 @@ import pandas as pd
 from pyspark.sql import functions as sf
 from pyspark.sql.types import NumericType
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import avg, month, year
+from pyspark.sql.functions import avg, month, year, row_number
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType, FloatType, DateType, DoubleType
+from pyspark.sql import functions as F
 
 from DataFrame import DataframeClass
 
@@ -36,7 +39,7 @@ from collections import Counter
 #Close : Le dernier prix auquel l'action a été échangée à la fin de la journée de bourse
 #Open : Le premier prix auquel l'action a été mesurée au début de la journée
 
-
+spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
 def head_and_tail_40(df: DataFrame, df_idx: int):
     head_40 = df.limit(40)
@@ -197,7 +200,7 @@ def get_month_name(month_number, year):
         return -1
 
 # str : Open ou Close pour connaitre l'average des prix par mois 
-# Output : dictionnaire avec clé : mois et valeur : average (Close price ou Open price)
+# Output : dictionnaire avec clé : "mois-year" et valeur : average (Close price ou Open price)
 
 def monthly_avg_price(df, str):
     
@@ -277,6 +280,62 @@ def yearly_avg_price(df, str):
         return dictio_avg_year
 
 
+def joined_dfs(df, tmp_df):
+
+    df = df.withColumn("index", F.monotonically_increasing_id())
+    tmp_df = tmp_df.withColumn("index", F.monotonically_increasing_id()) # Incrémentation de l'index par la fonction mono..
+    
+    new_schema = StructType([
+            StructField("Stock Variation", DoubleType(), True),
+            StructField("Date", DateType(), True),
+            StructField("Open", FloatType(), True),
+            StructField("High", FloatType(), True),
+            StructField("Low", FloatType(), True),
+            StructField("Close", FloatType(), True),
+            StructField("Volume", FloatType(), True),
+            StructField("Dividends", FloatType(), True),
+            StructField("Stock Splits", FloatType(), True)
+    ])
+
+    # Jointure sur index
+
+    new_df = spark.createDataFrame(tmp_df.join(df, "index").drop("index").collect(),schema = new_schema)
+
+    return new_df
+
+
+# Mesure the stock variation day to day
+# Variation : DAY(N+1) - DAY(N)
+
+def stock_dtd_variation(df):
+    
+
+    tmp = []
+    tmp_row = 0
+
+    print(len(df.collect()))
+
+    for pos, row in enumerate(df.collect()):
+        i = pos + 1 # pos prend en compte l'entete
+
+        if i == 1 :
+            tmp_row = row.Volume
+
+
+        elif i <= len(df.collect()) :
+            tmp.append(row.Volume - tmp_row )
+            tmp_row = row.Volume
+    
+    tmp_df = spark.createDataFrame([(val, ) for val in tmp], ["Stock Variation"])
+    
+    # Jointure des deux tables pour ajout de Varation Stock
+
+    new_df = joined_dfs(df, tmp_df)
+    
+    return new_df
+        
+        
+
 dataframe_obj = DataframeClass()
 
 csv_folder_path = 'Stocks_Price'
@@ -284,6 +343,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = yearly_avg_price(data_dfs[4], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = stock_dtd_variation(data_dfs[0])#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
 print(result)
