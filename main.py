@@ -304,12 +304,11 @@ def joined_dfs(df, tmp_df):
     return new_df
 
 
-# Mesure the stock variation day to day
+# Mesure variation day to day selon la colonne donnée : str
 # Variation : DAY(N+1) - DAY(N)
 
-def stock_dtd_variation(df):
+def stock_dtd_variation(df, str):
     
-
     tmp = []
     tmp_row = 0
 
@@ -319,22 +318,74 @@ def stock_dtd_variation(df):
         i = pos + 1 # pos prend en compte l'entete
 
         if i == 1 :
-            tmp_row = row.Volume
+            tmp_row = getattr(row, str)
 
 
         elif i <= len(df.collect()) :
-            tmp.append(row.Volume - tmp_row )
-            tmp_row = row.Volume
+            tmp.append(getattr(row, str)- tmp_row )
+            tmp_row = getattr(row, str)
     
     tmp_df = spark.createDataFrame([(val, ) for val in tmp], ["Stock Variation"])
     
     # Jointure des deux tables pour ajout de Varation Stock
-
     new_df = joined_dfs(df, tmp_df)
     
     return new_df
         
-        
+
+# Mesure des variations pour chaque mois d'une colonne donnée : str
+# Variation : DERNIER JOUR DU MOIS VOLUME - PREMIER JOUR DU MOIS VOLUME
+# Return: dictionnary {Month-Year : variation}
+
+def stock_volume_montly_variation(df, str):
+    
+    df = df.sort("Date", ascending = True)
+
+    month_df = df.withColumn("Month", month("Date"))
+    date = month_df.withColumn("Year", year("Date"))
+
+    ini_month = month_df.select("Month").first()[0]
+    ini_year = date.select("Year").first()[0]
+
+    tmp_array_volume = []
+    stock = {}
+
+    for pos, row in enumerate(date.collect()):
+
+        if ini_month == row.Month:
+            tmp_array_volume.append(getattr(row, str))
+
+        else :
+                    
+            val_beg = tmp_array_volume[0]
+
+            if(len(tmp_array_volume) == 1):
+                val_fin = 0
+            else :
+                val_fin = tmp_array_volume[len(tmp_array_volume)-1]
+
+            stock[get_month_name(ini_month, ini_year)] = np.abs(val_fin - val_beg)
+
+            ini_month = row.Month
+            ini_year = row.Year
+
+            tmp_array_volume = []
+            tmp_array_volume.append(getattr(row, str))
+
+
+        if pos+1 == len(date.collect()):
+                tmp_array_volume.append(getattr(row, str))
+                val_beg = tmp_array_volume[0]
+                if len(tmp_array_volume) == 1:
+                    val_fin = 0
+                else :
+                    val_fin = tmp_array_volume[-1]
+
+                stock[get_month_name(ini_month, ini_year)] = np.abs(val_fin - val_beg)
+    
+    return stock
+
+
 
 dataframe_obj = DataframeClass()
 
@@ -343,6 +394,7 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = stock_dtd_variation(data_dfs[0])#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = stock_dtd_variation(data_dfs[4], "Close")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
-print(result)
+
+result.show()
