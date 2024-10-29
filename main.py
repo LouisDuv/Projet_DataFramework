@@ -12,7 +12,7 @@ import pyspark.pandas as ps
 from pyspark.sql import functions as sf
 from pyspark.sql.types import NumericType
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import avg, month, year, row_number
+from pyspark.sql.functions import avg, month, year, day, lit
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, DateType, DoubleType
 from pyspark.sql import functions as F
@@ -107,6 +107,10 @@ def most_common_element(arr):
     most_common = count.most_common(1)  #Renvoie une liste de tuple (élément, occurrences)
     return most_common[0] if most_common else (None, 0) 
 
+# Donne le format de l'enregistrement des données : daily, weekly, monthly
+# Permet de détecter des patterns non-reconnu (enregistrement de 5 jours, 14, et autres)
+# Retourn un message en format str
+
 def period_btw_data(df):
 
     counterDaily = 0
@@ -178,6 +182,8 @@ def daily_avg_price(df, str):
         ps_df = ps.DataFrame(df_avg)
         return ps_df
 
+# Fonction utile pour labelisation des mois
+
 def get_month_name(month_number, year):
     months = [
         "", 
@@ -244,7 +250,6 @@ def monthly_avg_price(df, str):
 
         return ps_df
 
-
 # str : Open ou Close pour connaitre l'average des prix par mois 
 # Output : dictionnaire avec clé : year et valeur : average (Close price ou Open price)
 
@@ -287,60 +292,24 @@ def yearly_avg_price(df, str):
 
         return ps_df
 
-
-def joined_dfs(df, tmp_df):
-
-    df = df.withColumn("index", F.monotonically_increasing_id())
-    tmp_df = tmp_df.withColumn("index", F.monotonically_increasing_id()) # Incrémentation de l'index par la fonction mono..
-    
-    new_schema = StructType([
-            StructField("Stock_Variation", DoubleType(), True),
-            StructField("Date", DateType(), True),
-            StructField("Open", FloatType(), True),
-            StructField("High", FloatType(), True),
-            StructField("Low", FloatType(), True),
-            StructField("Close", FloatType(), True),
-            StructField("Volume", FloatType(), True),
-            StructField("Dividends", FloatType(), True),
-            StructField("Stock Splits", FloatType(), True)
-    ])
-
-    # Jointure sur index
-
-    new_df = spark.createDataFrame(tmp_df.join(df, "index").drop("index").collect(),schema = new_schema)
-
-    return new_df
-
-
 # Mesure variation day to day selon la colonne donnée : str
-# Variation : DAY(N+1) - DAY(N)
+# Variation : CLOSE PRICE - OPEN PRICE
 # Return a pyspark dataframe
 
-def dtd_stock_variation(df, str):
+def dtd_stock_variation(df):
     
-    tmp = []
-    tmp_row = 0
+    df = df.withColumn("Stock_Variation", lit(0))
+    p_df = df.toPandas()
 
-    for pos, row in enumerate(df.collect()):
+    for pos, row in enumerate(p_df):
+       
         i = pos + 1 # pos prend en compte l'entete
 
-        if i == 1 :
-            tmp_row = getattr(row, str)
+        if i <= len(p_df) :
+            p_df["Stock_Variation"] = np.round((p_df["Close"] - p_df["Open"]), 3)
+  
+    ps_df = ps.DataFrame(p_df)
 
-
-        elif i <= len(df.collect()) :
-            tmp.append(getattr(row, str)- tmp_row )
-            tmp_row = getattr(row, str)
-    
-    
-    tmp = np.round(np.array(tmp), 3)
-    tmp_df = spark.createDataFrame(tmp, ["Stock_Variation"])
-    
-    # Jointure des deux tables pour ajout de Varation Stock
-    new_df = joined_dfs(df, tmp_df)
-
-    ps_df = ps.DataFrame(new_df)
-    
     return ps_df
         
 
@@ -400,8 +369,11 @@ def monthly_stock_variation(df, str):
 
     return ps_df
 
-def max_daily_return(df, str):
-    ps_df = dtd_stock_variation(df, str)
+# Mesure le benefice max sur d'un DF
+#Retourn un dataframe pandasOnSpark
+
+def max_daily_return(df):
+    ps_df = dtd_stock_variation(df)
     print(ps_df)
     s_df = ps_df.to_spark()
     s_df = s_df.select(F.max("Stock_Variation").alias("Maximum_profit"))
@@ -409,37 +381,57 @@ def max_daily_return(df, str):
     return ps_df
 
 
-# Determine la moyenne des rentabilites des actions sur une période donnée
-# perido : w pour week, m pour month, y pour year
+# Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : close-open)
+# period : w pour week, m pour month, y pour year
 # Return un dataframe panda-spark
 
-def avg_daily_return(df,period): 
+def avg_daily_return(df,period):
 
-    ps_df = ps.DataFrame(dtd_stock_variation(df, "Open"))
-    day = 0
+    if period in ["w", "m", "y"]:
 
-    if period == "w":
-        day = 7
-    elif period == "m":
-        day = 31
-    elif period == "y":
-        day = 365
-
-    variation_stock = np.zeros(shape=(day, 1))
+        df = df.sort("Date", ascending = True)
+        trigger = False
     
-    for i in range(day):
-            variation_stock[i] = ps_df["Stock_Variation"].iloc[i]
+        tmp_df = dtd_stock_variation(df)
+        tmp_df = tmp_df.to_spark()
 
-    print(variation_stock)
+        print(tmp_df)
 
-    avg = np.round(np.average(variation_stock), 3)
+        nb_sample = 0
+        init_date = tmp_df.select("Date").first()[0]
+        stock_var = {}
+        tmp_array = []
 
-    time_beg = str(ps_df["Date"].iloc[0])
-    time_fin = str(ps_df["Date"].iloc[day-1])
-   
-    ps_df = ps.DataFrame([[avg, f"{time_beg} to {time_fin}"]], columns=["Average Return", "Period"])
+        if period == "w":
+            nb_sample = 7
+        elif period == "m":
+            nb_sample = 31
+        elif period == "y":
+            nb_sample = 365
+        else :
+            return -1
+    
+        for row in tmp_df.collect():
+            diff = init_date - row.Date
+            if abs(diff.days) < nb_sample:
+                tmp_array.append(row.Stock_Variation)
+            else :
+                trigger = True
+                key = f"{init_date} to {row.Date}"
+                stock_var[key] = np.round(np.average(np.array(tmp_array)), 3)
+                init_date = row.Date
+                tmp_array = []
 
-    return ps_df
+        if trigger == False :
+            print("[INFO] Given period too large for the dataset")
+            return -1
+        
+        p_df = pd.DataFrame(list(stock_var.items()), columns=["Period", "Average_Stock_Variation_($)"])
+        ps_df = ps.DataFrame(p_df)
+
+        return ps_df
+    else :
+        return -1
 
 dataframe_obj = DataframeClass()
 
@@ -448,7 +440,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = avg_daily_return(data_dfs[4], "m")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = monthly_stock_variation(data_dfs[0], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
-result = result.to_spark()
-result.show()
+print(result)
