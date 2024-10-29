@@ -3,21 +3,61 @@ import numpy as np
 import pandas as pd
 
 import pyspark.pandas as ps
+from datetime import timedelta
+
 
 from pyspark.sql.functions import avg, month, year,lit
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from script.exploration import values_correlation
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
-# str : Open ou Close pour connaitre l'average des prix par jour 
-# Output : average (float)
+# Input : period -> w for weekly, y for yearly, m for monthly 
+# str -> Open ou Close
+# Output : DataFrame (Period, Average_STR_Price($))
         
-def daily_avg_price(df, str):
-    if str == "Open" or str == "Close":
-        df_avg = df.agg(avg(str).alias("Average"))
-        ps_df = ps.DataFrame(df_avg)
+def avg_price(df, period, str):
+
+    trigger = False
+
+    if str in ["Open", "Close"] and period in ["w", "m", "y"]:
+        
+        if period == "w":
+            nb_samples = 7
+        elif period == "y":
+            nb_samples = 364
+        elif period == "m":
+            nb_samples = 30
+        
+        initDate = df.select("Date").first()[0]
+        
+        tmp = []
+        dictio = {}
+
+        for row in df.collect():
+            
+            diff = row.Date - initDate
+            
+            if abs(diff.days) < nb_samples :
+                tmp.append(getattr(row, str))
+            else :
+                trigger = True
+                key = f"{initDate} to {row.Date}"
+                dictio[key] = np.round(np.average(tmp), 3)
+                tmp = []
+                initDate = row.Date
+
+        if trigger == False :
+            print("[INFO] -> Dataset too small to analyze for the given period")
+            return -1
+        
+        ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", f"Average_{str}_Price($)"])
+
         return ps_df
+    else : 
+        print("[INFO] -> Error in one of the parameters, please give (period : w, y, m and existing column for str)")
+        return -1
 
 # Fonction utile pour labelisation des mois
 
@@ -43,92 +83,6 @@ def get_month_name(month_number, year):
     else : 
         return -1
 
-# str : Open ou Close pour connaitre l'average des prix par mois 
-# Output : Pyspark.pandas dataframe
-
-def monthly_avg_price(df, str):
-    
-    if str == "Open" or str == "Close" :
-
-        dictio_avg_month = {}
-        open_df = df.select("Date", str)
-
-        date_open_df = open_df.withColumn("month", month("Date"))
-        date_open_df = date_open_df.withColumn("year", year("Date"))
-
-        initMonth = date_open_df.select("month").first()[0]
-
-        array = []
-  
-        for pos, row in enumerate(date_open_df.collect()):
-            
-            if pos + 1 == len(date_open_df.collect()) : # POS +1 pour gerer l'entete
-
-                initMonth = row.month
-                array.append(getattr(row, str))
-                average = sum(array) / len(array)
-                dictio_avg_month[get_month_name(initMonth, row.year)] = average
-
-            else : 
-                if initMonth == row.month:
-                    array.append(getattr(row, str)) # getattr Accéder à l'attribut de la ligne par le str donnée (Open/Close) 
-            
-                else:
-                    average = sum(array) / len(array)
-                    dictio_avg_month[get_month_name(initMonth, row.year)] = np.round(average, 3)
-                
-                    array = []
-                    initMonth = row.month
-                    array.append(getattr(row, str))
-
-        
-        p_df = pd.DataFrame(list(dictio_avg_month.items()), columns=[f"Period", "Average " + str + " Price($)"])
-        ps_df = ps.DataFrame(p_df)
-
-        return ps_df
-
-# str : Open ou Close pour connaitre l'average des prix par mois 
-# Output : dictionnaire avec clé : year et valeur : average (Close price ou Open price)
-
-def yearly_avg_price(df, str):
-
-    if str == "Open" or str == "Close" :
-
-        dictio_avg_year = {}
-        open_df = df.select("Date", str)
-
-        date_open_df  = open_df.withColumn("year", year("Date"))
-        initYear= date_open_df.select("year").first()[0]
-
-        array = []
-        for pos, row in enumerate(date_open_df.collect()):
-            
-            if pos + 1 == len(date_open_df.collect()) : # POS +1 pour gerer l'entete
-
-                initYear = row.year
-                array.append(getattr(row, str))
-                average = sum(array) / len(array)
-                dictio_avg_year[initYear] = average
-            
-            else :
-
-                if initYear == row.year:
-                    array.append(getattr(row, str)) # getattr Accéder à l'attribut de la ligne par le str donnée (Open/Close)
-                
-                else :
-                    average = sum(array) / len(array)
-                    dictio_avg_year[initYear] = np.round(average, 3)
-                    array = []
-                
-                    initYear = row.year
-                    array.append(getattr(row, str))
-
-
-        p_df = pd.DataFrame(list(dictio_avg_year.items()), columns=[f"Period", "Average_" + str + "_Price($)"])
-        ps_df = ps.DataFrame(p_df)
-
-        return ps_df
-
 # Mesure variation day to day selon la colonne donnée : str
 # Variation : CLOSE PRICE - OPEN PRICE
 # Return a pyspark dataframe
@@ -149,7 +103,6 @@ def dtd_stock_variation(df):
 
     return ps_df
         
-
 # Mesure des variations pour chaque mois d'une colonne donnée
 # str : "Volume", "Open", "Close"
 # Variation : DERNIER JOUR DU MOIS VOLUME - PREMIER JOUR DU MOIS VOLUME
@@ -201,7 +154,7 @@ def monthly_stock_variation(df, str):
 
                 stock[get_month_name(ini_month, ini_year)] = np.round(val_fin - val_beg, 3)
     
-    p_df = pd.DataFrame(list(stock.items()), columns=["Period", "Stock Variation ($)"])
+    p_df = pd.DataFrame(list(stock.items()), columns=["Period", f"Stock_{str}_Variation_($)"])
     ps_df = ps.DataFrame(p_df)
 
     return ps_df
@@ -211,7 +164,6 @@ def monthly_stock_variation(df, str):
 
 def max_daily_return(df):
     ps_df = dtd_stock_variation(df)
-    print(ps_df)
     s_df = ps_df.to_spark()
     s_df = s_df.select(F.max("Stock_Variation").alias("Maximum_profit"))
     ps_df = ps.DataFrame(s_df)
@@ -219,9 +171,9 @@ def max_daily_return(df):
 
 # Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : close-open)
 # period : w pour week, m pour month, y pour year
-# Return un dataframe panda-spark
+# Return un dataframe pandaOnSpark
 
-def avg_daily_return(df,period):
+def avg_return(df,period):
 
     if period in ["w", "m", "y"]:
 
@@ -269,6 +221,7 @@ def avg_daily_return(df,period):
 
 # Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner
 # Output : Data 
+
 def moving_average(df, given_col, nb_sample):
     
     df = df.sort("Date", ascending = False)
@@ -290,3 +243,57 @@ def moving_average(df, given_col, nb_sample):
     ps_df = ps.DataFrame(p_df.head(nb_sample)) # Retourn un df de la taille du nb de sample donnée
 
     return ps_df
+
+# Input : 2 Datasets, existing columns for both of them
+# Ouput : DataFrame with correlation value
+# => Methode Pearson utilisée pour la corrélation
+
+def correlation_btw_stocks(df_1, df_2, col):
+
+    pdf_1 = df_1.selectExpr("{} as D1".format(col)).toPandas()
+    pdf_2 = df_2.selectExpr("{} as D2".format(col)).toPandas()
+
+    p_df = pd.concat([pdf_1, pdf_2], axis=1)
+    
+    return p_df.corr(method="pearson")
+ 
+# Input : df, period [w, m, y]
+# Output : PandaOnPyspark df [Period, Return Rate]
+
+def return_rate(df, period):
+
+    if period in ["w", "m", "y"]:
+
+        if period == "w":
+            nb_samples = 7
+        elif period == "y":
+            nb_samples = 364
+        elif period == "m":
+            nb_samples = 30
+
+        init_date = df.select("Date").first()[0]
+        init_open = df.select("Open").first()[0]
+
+        dictio = {}
+        trigger = False
+
+        for row in df.collect():
+            diff = row.Date - init_date
+            if abs(diff) >= timedelta(days=nb_samples) :
+                trigger = True
+                rate = ((row.Close - init_open)/init_open) * 100
+                key = f"{init_date} to {row.Date}"
+                dictio[key] = rate
+                init_date = row.Date
+                init_open = row.Open
+
+        if trigger == False:
+            print("[INFO] -> Period too large to be used on this dataset")
+            return -2 
+        ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", "Return_Rate_(%)"])
+
+        return ps_df
+    else :
+        print("[INFO] -> can't take parameter period in charge")
+        return -1
+

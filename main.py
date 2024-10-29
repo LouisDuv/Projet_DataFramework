@@ -6,7 +6,8 @@ from pyspark.sql import SparkSession
 
 from script.DataFrame import DataframeClass
 
-from script.business_analysis import monthly_avg_price
+from script.business_analysis import avg_price, monthly_stock_variation, max_daily_return, return_rate
+from script.exploration import values_correlation
 
 
 # aapl = yf.Ticker("AAPL").history(period="1y")
@@ -29,6 +30,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_avg_price(data_dfs[3], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = return_rate(data_dfs[0], "m")#dataframe_obj.perform_operation_on_each(values_correlation, "Open", "Close")
 
 print(result)
