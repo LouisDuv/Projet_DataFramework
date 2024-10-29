@@ -395,8 +395,6 @@ def avg_daily_return(df,period):
         tmp_df = dtd_stock_variation(df)
         tmp_df = tmp_df.to_spark()
 
-        print(tmp_df)
-
         nb_sample = 0
         init_date = tmp_df.select("Date").first()[0]
         stock_var = {}
@@ -433,6 +431,30 @@ def avg_daily_return(df,period):
     else :
         return -1
 
+# Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner
+# Output : Data 
+def moving_average(df, given_col, nb_sample):
+    
+    df = df.sort("Date", ascending = False)
+    
+    tmp_array = []
+
+    for pos, row in enumerate(df.collect()):
+        
+        if pos + 1 <= nb_sample:
+            tmp_array.append(getattr(row, given_col))
+        else :
+            break
+    
+    moving_average = np.round(np.average(tmp_array), 3)
+
+    p_df = df.toPandas()
+    p_df["Moving_Average"] = moving_average
+    
+    ps_df = ps.DataFrame(p_df.head(nb_sample)) # Retourn un df de la taille du nb de sample donnée
+
+    return ps_df
+
 dataframe_obj = DataframeClass()
 
 csv_folder_path = 'Stocks_Price'
@@ -440,6 +462,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_stock_variation(data_dfs[0], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = moving_average(data_dfs[3], "Open", 7)#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
 print(result)
