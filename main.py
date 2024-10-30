@@ -37,5 +37,4 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-
 result = variation_stocks_volume(data_dfs[3], "m")#dataframe_obj.perform_operation_on_each(values_correlation, "Open", "Close")
