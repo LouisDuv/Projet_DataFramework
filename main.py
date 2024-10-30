@@ -90,7 +90,7 @@ def values_correlation(df: DataFrame, df_idx: int, col1: str, col2: str):
     #interesting: correlation between (close-open) and volume
     return correlation
 
-def differenceBtwDays(df):
+def differenceBtwDays(df: DataFrame):
     diff_array = []
     for pos, date in enumerate(df):
         
@@ -111,21 +111,20 @@ def most_common_element(arr):
 # Permet de détecter des patterns non-reconnu (enregistrement de 5 jours, 14, et autres)
 # Retourn un message en format str
 
-def period_btw_data(df):
-
+def period_btw_data(df: DataFrame, df_idx: int):
     counterDaily = 0
+    counterWeekly = 0
     counterMonthly = 0
     counterYearly = 0
-    counterWeekly = 0
     weekDay = []
+    result = f"Dataframe {df_idx+1}, period:"
 
     df_p = df.toPandas()
     df_p = pd.to_datetime(df_p["Date"])
 
     differences = differenceBtwDays(df_p)
 
-    for period in differences :
-
+    for period in differences:
         if period == 1:
             counterDaily +=1
         elif period == 7 :
@@ -152,21 +151,14 @@ def period_btw_data(df):
 
     main_pattern = max(avgDaily, avgWeekly, avgMonthly, avgYearly, avgPattern)
 
-    if main_pattern == avgDaily  :
-        str = "\n[INFO] Daily information - {} days corresponding to this format.\nAnd {} days not following this pattern".format(counterDaily, df.count() - counterDaily)
-        return str
-
+    if main_pattern == avgDaily:
+        result += "\n[INFO] Daily information - {} days corresponding to this format.\nAnd {} days not following this pattern\n".format(counterDaily, df.count() - counterDaily)
     elif main_pattern == avgWeekly:
-        str = "\n[INFO] Weekly information - {} days corresponding to this format.\nAnd {} days not following this pattern".format(counterWeekly, df.count() - counterWeekly)
-        return str
-    
-    elif main_pattern == avgMonthly :
-        str = "\n[INFO] Monthly information - {} days corresponding to this format.\nAnd {} days not following this pattern".format(counterMonthly, df.count() - counterMonthly)
-        return str
-    
-    elif main_pattern == avgYearly :
-        str = "\n[INFO] Yearly information - {} days corresponding to this format.\nAnd {} days not following this pattern".format(counterYearly, df.count() - counterYearly)
-        return str
+        result += "\n[INFO] Weekly information - {} days corresponding to this format.\nAnd {} days not following this pattern\n".format(counterWeekly, df.count() - counterWeekly)
+    elif main_pattern == avgMonthly:
+        result += "\n[INFO] Monthly information - {} days corresponding to this format.\nAnd {} days not following this pattern\n".format(counterMonthly, df.count() - counterMonthly)
+    elif main_pattern == avgYearly:
+        result += "\n[INFO] Yearly information - {} days corresponding to this format.\nAnd {} days not following this pattern\n".format(counterYearly, df.count() - counterYearly)
     elif main_pattern == avgPattern:
         str = "\n[INFO] Main pattern : {} days between information  - {} days corresponding to this format.\nAnd {} days not following this pattern".format(day_pattern, counterPattern, df.count() - counterPattern)
         return str
@@ -440,6 +432,10 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_stock_variation(data_dfs[0], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = monthly_stock_variation(data_dfs[0], "Open") #dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
 print(result)
+
+# result = dataframe_obj.perform_operation_on_each(values_correlation, "Close", "Volume")
+# print("\n\n")
+# result = dataframe_obj.perform_operation_on_each(values_correlation, "High", "Low")  
