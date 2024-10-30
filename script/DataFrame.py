@@ -25,6 +25,7 @@ class DataframeClass:
         df = self.spark.read.csv(file_path, header=True, schema=schema)
         print(file_path)
         df = df.withColumn("Date", col("Date").cast(DateType()))
+        df = df.orderBy(col("date").desc())
         return df
 
     def read_multiple_csv(self, file_paths: List[str]) -> List[DataFrame]:

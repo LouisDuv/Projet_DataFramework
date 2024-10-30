@@ -108,69 +108,50 @@ def dtd_stock_variation(df):
         
 # Mesure des variations pour chaque mois d'une colonne donnée
 # str : "Volume", "Open", "Close"
-# Variation : DERNIER JOUR DU MOIS VOLUME - PREMIER JOUR DU MOIS VOLUME
+# Variation : DERNIER JOUR DU MOIS CLOS - PREMIER JOUR DU MOIS OPEN
 # Return: pyspark.pandas dataframe
 
-def monthly_stock_variation(df, str, nb_of_month = None):
+def monthly_stock_variation(df, nb_of_month = None):
     
-    df = df.sort("Date", ascending = False)
 
-    month_df = df.withColumn("Month", month("Date"))
-    date = month_df.withColumn("Year", year("Date"))
+    init_date = df.select("Date").first()[0]
+    init_str = df.select("Open").first()[0]
 
-    ini_month = month_df.select("Month").first()[0]
-    ini_year = date.select("Year").first()[0]
-
-    tmp_array_volume = []
     stock = {}
 
     counter = 0
 
-    for pos, row in enumerate(date.collect()):
+    for pos, row in enumerate(df.collect()):
+        
+        diff = row.Date - init_date
 
-        if ini_month == row.Month:
-            tmp_array_volume.append(getattr(row, str))
-
-        else :
+        if abs(diff) >= timedelta(days = 30) :
             
             counter += 1
+            val_beg = init_str
 
-            val_beg = tmp_array_volume[0]
+            val_fin = getattr(row, "Close")
 
-            if(len(tmp_array_volume) == 1):
-                val_fin = 0
-            else :
-                val_fin = tmp_array_volume[len(tmp_array_volume)-1]
-
-            stock[get_month_name(ini_month, ini_year)] = np.round(val_fin - val_beg, 3)
+            stock[row.Date] = np.round(val_fin - val_beg, 3)
 
             if counter == nb_of_month :
                 break
 
-            ini_month = row.Month
-            ini_year = row.Year
+            init_date= row.Date
+            init_str = getattr(row, "Open")
 
-            tmp_array_volume = []
-            tmp_array_volume.append(getattr(row, str))
+        if pos+1 == len(df.collect()):
 
+                val_beg = init_str
+                val_fin = getattr(row, "Close")
 
-        if pos+1 == len(date.collect()):
-                tmp_array_volume.append(getattr(row, str))
-                val_beg = tmp_array_volume[0]
-                if len(tmp_array_volume) == 1:
-                    val_fin = 0
-                else :
-                    val_fin = tmp_array_volume[-1]
-
-                stock[get_month_name(ini_month, ini_year)] = np.round(val_fin - val_beg, 3)
+                stock[row.Date] = np.round(val_fin - val_beg, 3)
     
 
-    p_df = pd.DataFrame(list(stock.items()), columns=["Period", f"Stock_{str}_Variation_($)"])
+    p_df = pd.DataFrame(list(stock.items()), columns=["Period", f"Stock_Variation_($)"])
     ps_df = ps.DataFrame(p_df)
-
-    print(ps_df)
     
-    bar_plot(ps_df["Period"].to_pandas(), ps_df[f"Stock_{str}_Variation_($)"].to_pandas())
+    bar_plot(ps_df["Period"].to_pandas(), ps_df["Stock_Variation_($)"].to_pandas())
 
     return ps_df
 
