@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import numpy as np
 
 
@@ -17,5 +16,15 @@ def bar_plot(x, y):
 
     plt.xlabel("Date")
     plt.ylabel("Variation")
+    plt.legend()
+    plt.show()
+
+def scatter_plot(x, y, x_name = None, y_name = None, title=None):
+    plt.scatter(x, y)
+
+    plt.title
+    plt.xlabel(x_name)
+    plt.ylabel(y_name)
+
     plt.legend()
     plt.show()

@@ -10,13 +10,27 @@ from pyspark.sql.functions import avg, month, year,lit
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
-from script.visualisation import bar_plot
+from script.visualisation import bar_plot, scatter_plot
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
+
+
+def period_to_day(string):
+    if string == "w" :
+        return 7
+    elif string == "m":
+        return 30
+    elif string == "y":
+        return 365
+
+    else : 
+        print("[INFO] -> Mistake in the given string ")
+        return -1
 
 # Input : period -> w for weekly, y for yearly, m for monthly 
 # str -> Open ou Close
 # Output : DataFrame (Period, Average_STR_Price($))
+# Mesure le prix moyen d'une action (Open ou Close) sur une période donnée
         
 def avg_price(df, period, str):
 
@@ -24,12 +38,7 @@ def avg_price(df, period, str):
 
     if str in ["Open", "Close"] and period in ["w", "m", "y"]:
         
-        if period == "w":
-            nb_samples = 7
-        elif period == "y":
-            nb_samples = 365
-        elif period == "m":
-            nb_samples = 30
+        nb_samples = period_to_day(period)
         
         initDate = df.select("Date").first()[0]
         
@@ -156,7 +165,7 @@ def monthly_stock_variation(df, nb_of_month = None):
     return ps_df
 
 # Mesure le benefice max sur d'un DF
-#Retourn un dataframe pandasOnSpark
+#Retourn un dataframe pandasOnSpark du maximum de bénéfice d'un df
 
 def max_daily_return(df):
     ps_df = dtd_stock_variation(df)
@@ -179,19 +188,10 @@ def avg_return(df,period):
         tmp_df = dtd_stock_variation(df)
         tmp_df = tmp_df.to_spark()
 
-        nb_sample = 0
+        nb_sample = period_to_day(period)
         init_date = tmp_df.select("Date").first()[0]
         stock_var = {}
         tmp_array = []
-
-        if period == "w":
-            nb_sample = 7
-        elif period == "m":
-            nb_sample = 31
-        elif period == "y":
-            nb_sample = 365
-        else :
-            return -1
     
         for row in tmp_df.collect():
             diff = init_date - row.Date
@@ -208,8 +208,12 @@ def avg_return(df,period):
             print("[INFO] Given period too large for the dataset")
             return -1
         
-        p_df = pd.DataFrame(list(stock_var.items()), columns=["Period", "Average_Stock_Variation_($)"])
+        col_name1 = "Period"
+        col_name2 = "Average_Stock_Variation_($)"
+        p_df = pd.DataFrame(list(stock_var.items()), columns=[col_name1, col_name2])
         ps_df = ps.DataFrame(p_df)
+
+        scatter_plot(p_df["Period"].to_numpy(), p_df[col_name2].to_numpy(), col_name1, col_name2, col_name1)
 
         return ps_df
     else :
@@ -261,12 +265,7 @@ def return_rate(df, period):
 
     if period in ["w", "m", "y"]:
 
-        if period == "w":
-            nb_samples = 7
-        elif period == "y":
-            nb_samples = 364
-        elif period == "m":
-            nb_samples = 30
+        nb_samples = period_to_day(period)
 
         init_date = df.select("Date").first()[0]
         init_open = df.select("Open").first()[0]
@@ -294,8 +293,39 @@ def return_rate(df, period):
         print("[INFO] -> can't take parameter period in charge")
         return -1
 
+# Bénéfice Maximum sur une période donnée
+# Retourne un PS DataFrame
+
 def max_return_rate(df, period):
     ps_df = return_rate(df, period)
     s_df = ps_df.to_spark()
 
     return ps.DataFrame(s_df.select(F.max("Return_Rate_(%)").alias("Max_Return_Rate")))
+
+def variation_stocks_volume(df, period):
+
+    init_vol = df.select("Volume").first()[0]
+    init_Date = df.select("Date").first()[0]
+
+    nb_samples = period_to_day(period)
+    dictio = {}
+ 
+    for pos, row in enumerate(df.collect()):
+        diff = row.Date - init_Date
+        if abs(diff.days) >= nb_samples or pos +1 == len(df.collect()):
+            dictio[row.Date] = np.round((row.Volume - init_vol), 3)
+            init_vol = row.Volume
+            init_Date = row.Date
+    
+    p_df = pd.DataFrame(list(dictio.items()), columns=["Period", "Variation_Volume"])
+    ps_df = ps.DataFrame(p_df)
+
+    bar_plot(p_df["Period"], p_df["Variation_Volume"])
+
+    print(ps_df)
+
+    return ps_df
+        
+
+
+
