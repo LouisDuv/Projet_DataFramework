@@ -26,7 +26,7 @@ def avg_price(df, period, str):
         if period == "w":
             nb_samples = 7
         elif period == "y":
-            nb_samples = 364
+            nb_samples = 365
         elif period == "m":
             nb_samples = 30
         
@@ -259,6 +259,7 @@ def correlation_btw_stocks(df_1, df_2, col):
  
 # Input : df, period [w, m, y]
 # Output : PandaOnPyspark df [Period, Return Rate]
+# Return Rate : [[Close - Open]/Open] * 100
 
 def return_rate(df, period):
 
@@ -297,3 +298,8 @@ def return_rate(df, period):
         print("[INFO] -> can't take parameter period in charge")
         return -1
 
+def max_return_rate(df, period):
+    ps_df = return_rate(df, period)
+    s_df = ps_df.to_spark()
+
+    return ps.DataFrame(s_df.select(F.max("Return_Rate_(%)").alias("Max_Return_Rate")))
