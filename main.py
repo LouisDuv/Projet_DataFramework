@@ -11,6 +11,7 @@ from script.business_analysis import avg_price, monthly_stock_variation, max_dai
 from script.exploration import values_correlation, period_btw_data
 
 
+
 #aapl = yf.Ticker("AAPL").history(period="5y")
 #aapl.to_csv("apple.csv")
 #ba = yf.Ticker("BA").history(period="5y")
@@ -35,6 +36,4 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_stock_variation(data_dfs[4],"Close")#dataframe_obj.perform_operation_on_each(values_correlation, "Open", "Close")
-
-print(result)
+result = monthly_stock_variation(data_dfs[1], "Open", 13)#dataframe_obj.perform_operation_on_each(values_correlation, "Open", "Close")

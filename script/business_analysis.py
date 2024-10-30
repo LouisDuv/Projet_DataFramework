@@ -10,6 +10,7 @@ from pyspark.sql.functions import avg, month, year,lit
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
+from script.visualisation import bar_plot
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
@@ -53,6 +54,8 @@ def avg_price(df, period, str):
             return -1
         
         ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", f"Average_{str}_Price($)"])
+
+        bar_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas())
 
         return ps_df
     else : 
@@ -108,9 +111,9 @@ def dtd_stock_variation(df):
 # Variation : DERNIER JOUR DU MOIS VOLUME - PREMIER JOUR DU MOIS VOLUME
 # Return: pyspark.pandas dataframe
 
-def monthly_stock_variation(df, str):
+def monthly_stock_variation(df, str, nb_of_month = None):
     
-    df = df.sort("Date", ascending = True)
+    df = df.sort("Date", ascending = False)
 
     month_df = df.withColumn("Month", month("Date"))
     date = month_df.withColumn("Year", year("Date"))
@@ -121,13 +124,17 @@ def monthly_stock_variation(df, str):
     tmp_array_volume = []
     stock = {}
 
+    counter = 0
+
     for pos, row in enumerate(date.collect()):
 
         if ini_month == row.Month:
             tmp_array_volume.append(getattr(row, str))
 
         else :
-                    
+            
+            counter += 1
+
             val_beg = tmp_array_volume[0]
 
             if(len(tmp_array_volume) == 1):
@@ -136,6 +143,9 @@ def monthly_stock_variation(df, str):
                 val_fin = tmp_array_volume[len(tmp_array_volume)-1]
 
             stock[get_month_name(ini_month, ini_year)] = np.round(val_fin - val_beg, 3)
+
+            if counter == nb_of_month :
+                break
 
             ini_month = row.Month
             ini_year = row.Year
@@ -154,8 +164,13 @@ def monthly_stock_variation(df, str):
 
                 stock[get_month_name(ini_month, ini_year)] = np.round(val_fin - val_beg, 3)
     
+
     p_df = pd.DataFrame(list(stock.items()), columns=["Period", f"Stock_{str}_Variation_($)"])
     ps_df = ps.DataFrame(p_df)
+
+    print(ps_df)
+    
+    bar_plot(ps_df["Period"].to_pandas(), ps_df[f"Stock_{str}_Variation_($)"].to_pandas())
 
     return ps_df
 
