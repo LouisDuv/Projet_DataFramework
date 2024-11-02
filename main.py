@@ -8,7 +8,7 @@ import pyspark.pandas as ps
 
 from script.DataFrame import DataframeClass
 
-from script.business_analysis import avg_price, monthly_stock_variation, max_daily_return, return_rate, max_return_rate
+from script.business_analysis import avg_price, monthly_stock_variation, max_daily_return, return_rate, max_return_rate, avg_return
 from script.exploration import values_correlation, period_btw_data, head_and_tail_40
 
 
@@ -37,6 +37,4 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = monthly_stock_variation(data_dfs[0], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
-
-print(result)
+result = avg_price(data_dfs[6] , "m", "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)

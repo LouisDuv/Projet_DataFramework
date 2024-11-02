@@ -10,18 +10,19 @@ from pyspark.sql.functions import avg, month, year,lit
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
-from script.visualisation import bar_plot
+from script.visualisation import bar_plot, linear_plot,streamlit_test
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
 # Input : period -> w for weekly, y for yearly, m for monthly 
 # str -> Open ou Close
 # Output : DataFrame (Period, Average_STR_Price($))
+# Plot associé : Linear Chart
         
 def avg_price(df, period, str):
 
     trigger = False
-
+  
     if str in ["Open", "Close"] and period in ["w", "m", "y"]:
         
         if period == "w":
@@ -44,8 +45,7 @@ def avg_price(df, period, str):
                 tmp.append(getattr(row, str))
             else :
                 trigger = True
-                key = f"{initDate} to {row.Date}"
-                dictio[key] = np.round(np.average(tmp), 3)
+                dictio[row.Date] = np.round(np.average(tmp), 3)
                 tmp = []
                 initDate = row.Date
 
@@ -55,7 +55,9 @@ def avg_price(df, period, str):
         
         ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", f"Average_{str}_Price($)"])
 
-        bar_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas())
+        print(ps_df)
+
+        linear_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas(), str, period)
 
         return ps_df
     else : 
@@ -89,6 +91,7 @@ def get_month_name(month_number, year):
 # Mesure variation day to day selon la colonne donnée : str
 # Variation : CLOSE PRICE - OPEN PRICE
 # Return a pyspark dataframe
+# Plot associé : Linear Chart 
 
 def dtd_stock_variation(df):
     
@@ -110,6 +113,7 @@ def dtd_stock_variation(df):
 # str : "Volume", "Open", "Close"
 # Variation : DERNIER JOUR DU MOIS CLOS - PREMIER JOUR DU MOIS OPEN
 # Return: pyspark.pandas dataframe
+# Plot associé : Linear Chart
 
 def monthly_stock_variation(df, nb_of_month = None):
     
@@ -156,7 +160,7 @@ def monthly_stock_variation(df, nb_of_month = None):
     return ps_df
 
 # Mesure le benefice max sur d'un DF
-#Retourn un dataframe pandasOnSpark
+# Retourn un dataframe pandasOnSpark
 
 def max_daily_return(df):
     ps_df = dtd_stock_variation(df)
@@ -168,6 +172,7 @@ def max_daily_return(df):
 # Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : close-open)
 # period : w pour week, m pour month, y pour year
 # Return un dataframe pandaOnSpark
+# Plot associé : Linear Chart
 
 def avg_return(df,period):
 
@@ -211,6 +216,8 @@ def avg_return(df,period):
         p_df = pd.DataFrame(list(stock_var.items()), columns=["Period", "Average_Stock_Variation_($)"])
         ps_df = ps.DataFrame(p_df)
 
+        streamlit_test(p_df)
+
         return ps_df
     else :
         return -1
@@ -243,6 +250,7 @@ def moving_average(df, given_col, nb_sample):
 # Input : 2 Datasets, existing columns for both of them
 # Ouput : DataFrame with correlation value
 # => Methode Pearson utilisée pour la corrélation
+# Plot associé : Scatter Plot
 
 def correlation_btw_stocks(df_1, df_2, col):
 
@@ -256,6 +264,7 @@ def correlation_btw_stocks(df_1, df_2, col):
 # Input : df, period [w, m, y]
 # Output : PandaOnPyspark df [Period, Return Rate]
 # Return Rate : [[Close - Open]/Open] * 100
+# Plot associé : Linear Chart
 
 def return_rate(df, period):
 
