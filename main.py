@@ -37,5 +37,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
+result = monthly_stock_variation(data_dfs[0], "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
 
-result = monthly_stock_variation(data_dfs[0], 34)#dataframe_obj.perform_operation_on_each(values_correlation, "Open", "Close")
+print(result)
