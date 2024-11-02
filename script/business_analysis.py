@@ -65,7 +65,7 @@ def avg_price(df, period, str):
 
         print(ps_df)
 
-        linear_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas(), str, period)
+        linear_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas(), period, str)
 
         return ps_df
     else : 

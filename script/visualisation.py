@@ -4,6 +4,19 @@ import streamlit as st
 import matplotlib.dates as mdates
 
 
+
+def period_to_string(string) :
+    if string == "w" :
+        return "Weekly"
+    elif string == "m":
+        return "Monthly"
+    elif string == "y":
+        return "Yearly"
+
+    else : 
+        print("[INFO] -> Mistake in the given string ")
+        return -1
+
 # Bar Charts
 # X d
 def bar_plot(x, y):
@@ -22,6 +35,7 @@ def bar_plot(x, y):
     plt.ylabel("Variation")
     plt.legend()
     plt.show()
+
 def linear_plot(x, y, period, str, color_used = "blue"):
     
     x_n = x.to_numpy()
@@ -55,7 +69,7 @@ def linear_plot(x, y, period, str, color_used = "blue"):
     axes.tick_params(axis='x', rotation=50)
     axes.set_mouseover(mouseover = True)
 
-    plt.title(f"Average_{str}_Price_on_{period}")
+    plt.title(f"{period_to_string(period)}_Average_{str}_Price_($)")
     plt.show()
 
 def scatter_plot(x, y, x_name = None, y_name = None, title=None):
