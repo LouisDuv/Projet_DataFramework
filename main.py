@@ -37,4 +37,4 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
-result = avg_price(data_dfs[5] , "m", "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
+result = avg_price(data_dfs[3] , "m", "Open")#dataframe_obj.perform_operation_on_each(monthly_avg_open_price)
