@@ -36,38 +36,34 @@ def bar_plot(x, y):
     plt.legend()
     plt.show()
 
-def linear_plot(x, y, period, str, color_used = "blue"):
+def linear_plot(x : list, y : list, period : str, str : str = None, color_used : str = "blue"):
     
-    x_n = x.to_numpy()
-    y_n = y.to_numpy()
-
     fig_xshape = 14
 
-    if len(x_n) > 90 :
+    if len(x) > 90 :
         ticks_split = 12
         fig_xshape = 14
-    elif 60 <= len(x_n) <= 90:
+    elif 60 <= len(x) <= 90:
         ticks_split = 5
-    elif 30 <= len(x_n) < 60 :
+    elif 30 <= len(x) < 60 :
         ticks_split = 3
-    elif 15 <= len(x_n) <=30 :
+    elif 15 <= len(x) <=30 :
         ticks_split = 2
     else :
         ticks_split = 1
 
     fig, axes = plt.subplots(figsize = (fig_xshape, 6))
 
-    axes.set_xticks(x_n[::ticks_split]) # Afficher des ticks tous les 3 mesures 
+    axes.set_xticks(x[::ticks_split]) # Afficher des ticks tous les 3 mesures 
 
-    axes.set_xticklabels([date for date in x_n[::ticks_split]])
+    axes.set_xticklabels([date for date in x[::ticks_split]])
     axes.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     
-    axes.plot(x_n, y_n, marker = "o", color =  color_used, alpha = .5 )
+    axes.plot(x, y, marker = "o", color =  color_used, alpha = .5 )
     axes.set_xlabel(x.name)
     axes.set_ylabel(y.name)
 
     axes.tick_params(axis='x', rotation=50)
-    axes.set_mouseover(mouseover = True)
 
     plt.title(f"{period_to_string(period)}_Average_{str}_Price_($)")
     plt.show()

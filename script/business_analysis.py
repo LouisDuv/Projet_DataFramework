@@ -4,9 +4,13 @@ import pandas as pd
 
 import pyspark.pandas as ps
 from datetime import timedelta
+from pyspark.sql import DataFrame
+from pyspark.sql.types import StructType, StructField, StringType, FloatType, DateType
+from pyspark.sql import Window
 
 
-from pyspark.sql.functions import avg, month, year,lit
+
+from pyspark.sql.functions import avg, month, year,lit, udf, row_number
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
@@ -14,8 +18,7 @@ from script.visualisation import bar_plot, linear_plot,streamlit_test
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
-
-def period_to_day(string):
+def period_to_day(string : str):
     if string == "w" :
         return 7
     elif string == "m":
@@ -32,7 +35,7 @@ def period_to_day(string):
 # Output : DataFrame (Period, Average_STR_Price($))
 # Plot associé : Linear Chart
  
-def avg_price(df, period, str):
+def avg_price(df : DataFrame, period : str, str : str):
 
     trigger = False
   
@@ -61,20 +64,26 @@ def avg_price(df, period, str):
             print("[INFO] -> Dataset too small to analyze for the given period")
             return -1
         
-        ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", f"Average_{str}_Price($)"])
+        schema = StructType([
+            StructField("Period", DateType(), True),
+            StructField(f"Average_{str}_Price($)", FloatType(), True)
+            ])
+        
+        data = [(k, float(v)) for k, v in dictio.items()]
 
-        print(ps_df)
+        s_df = spark.createDataFrame(data, schema=schema)
+        s_df.show()
 
-        linear_plot(ps_df["Period"].to_pandas(), ps_df[f"Average_{str}_Price($)"].to_pandas(), period, str)
+        #linear_plot(s_df["Period"].to_pandas(), s_df[f"Average_{str}_Price($)"].to_pandas(), period, str)
 
-        return ps_df
+        return s_df
     else : 
         print("[INFO] -> Error in one of the parameters, please give (period : w, y, m and existing column for str)")
         return -1
 
 # Fonction utile pour labelisation des mois
 
-def get_month_name(month_number, year):
+def get_month_name(month_number : int, year):
     months = [
         "", 
         "Jan",
@@ -96,34 +105,30 @@ def get_month_name(month_number, year):
     else : 
         return -1
 
-# Mesure variation day to day selon la colonne donnée : str
+# Mesure variation day to day
 # Variation : CLOSE PRICE - OPEN PRICE
-# Return a pyspark dataframe
-# Plot associé : Linear Chart 
+# Return a spark dataframe
 
-def dtd_stock_variation(df):
+def dtd_stock_variation(df : DataFrame):
+
+    def variation(a, b):
+        return b-a
     
-    df = df.withColumn("Stock_Variation", lit(0))
-    p_df = df.toPandas()
+    variation_udf = udf(variation, FloatType())
+    
+    s_df = df.withColumn("Stock_Variation", variation_udf(F.col("Close"), F.col("Open")))
+    
+    #s_df.show()
 
-    for pos, row in enumerate(p_df):
-       
-        i = pos + 1 # pos prend en compte l'entete
-
-        if i <= len(p_df) :
-            p_df["Stock_Variation"] = np.round((p_df["Close"] - p_df["Open"]), 3)
-  
-    ps_df = ps.DataFrame(p_df)
-
-    return ps_df
+    return s_df
         
 # Mesure des variations pour chaque mois d'une colonne donnée
 # str : "Volume", "Open", "Close"
 # Variation : DERNIER JOUR DU MOIS CLOS - PREMIER JOUR DU MOIS OPEN
-# Return: pyspark.pandas dataframe
+# Return: spark dataframe
 # Plot associé : Linear Chart
 
-def monthly_stock_variation(df, nb_of_month = None):
+def monthly_stock_variation(df : DataFrame, nb_of_month : int = None):
     
 
     init_date = df.select("Date").first()[0]
@@ -160,29 +165,35 @@ def monthly_stock_variation(df, nb_of_month = None):
                 stock[row.Date] = np.round(val_fin - val_beg, 3)
     
 
-    p_df = pd.DataFrame(list(stock.items()), columns=["Period", f"Stock_Variation_($)"])
-    ps_df = ps.DataFrame(p_df)
-    
-    bar_plot(ps_df["Period"].to_pandas(), ps_df["Stock_Variation_($)"].to_pandas())
+    schema = StructType([
+        StructField("Period", DateType(), True),
+        StructField(f"Stock_Variation_($)", FloatType(), True)
+    ])
+        
+    data = [(k, float(v)) for k, v in stock.items()]
 
-    return ps_df
+    s_df = spark.createDataFrame(data, schema=schema)
+    s_df.show()
+
+    return s_df
 
 # Mesure le benefice max sur d'un DF
-#Retourn un dataframe pandasOnSpark
+#Retourn un dataframe spark
 
-def max_daily_return(df):
-    ps_df = dtd_stock_variation(df)
-    s_df = ps_df.to_spark()
-    s_df = s_df.select(F.max("Stock_Variation").alias("Maximum_profit"))
-    ps_df = ps.DataFrame(s_df)
-    return ps_df
+def max_daily_return(df : DataFrame):
+
+    s_df = dtd_stock_variation(df)
+    max_df = s_df.select(F.max("Stock_Variation").alias("Maximum_profit"))
+
+    max_df.show()
+    return max_df
 
 # Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : close-open)
 # period : w pour week, m pour month, y pour year
-# Return un dataframe pandaOnSpark
+# Return un dataframe spark
 # Plot associé : Linear Chart
 
-def avg_return(df,period):
+def avg_return(df : DataFrame, period : str):
 
     if period in ["w", "m", "y"]:
 
@@ -190,7 +201,6 @@ def avg_return(df,period):
         trigger = False
     
         tmp_df = dtd_stock_variation(df)
-        tmp_df = tmp_df.to_spark()
 
         nb_sample = period_to_day(period)
         init_date = tmp_df.select("Date").first()[0]
@@ -203,7 +213,7 @@ def avg_return(df,period):
                 tmp_array.append(row.Stock_Variation)
             else :
                 trigger = True
-                key = f"{init_date} to {row.Date}"
+                key = row.Date
                 stock_var[key] = np.round(np.average(np.array(tmp_array)), 3)
                 init_date = row.Date
                 tmp_array = []
@@ -211,61 +221,54 @@ def avg_return(df,period):
         if trigger == False :
             print("[INFO] Given period too large for the dataset")
             return -1
+ 
+        schema = StructType([
+        StructField("Period", DateType(), True),
+        StructField("Average_Stock_Variation_($)", FloatType(), True)
+        ])
         
-        col_name1 = "Period"
-        col_name2 = "Average_Stock_Variation_($)"
-        p_df = pd.DataFrame(list(stock_var.items()), columns=[col_name1, col_name2])
-        ps_df = ps.DataFrame(p_df)
-        streamlit_test(p_df)
-        return ps_df
-    else :
-        return -1
+        data = [(k, float(v)) for k, v in stock_var.items()]
+
+        s_df = spark.createDataFrame(data, schema=schema)
+        s_df.show()
+
+        return s_df
+
 
 # Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner
-# Output : Data 
+# Output : RIEN
 
-def moving_average(df, given_col, nb_sample):
+def moving_average(df : DataFrame, given_col : str, nb_sample : int):
     
-    df = df.sort("Date", ascending = False)
-    
-    tmp_array = []
+    pass
 
-    for pos, row in enumerate(df.collect()):
-        
-        if pos + 1 <= nb_sample:
-            tmp_array.append(getattr(row, given_col))
-        else :
-            break
-    
-    moving_average = np.round(np.average(tmp_array), 3)
-
-    p_df = df.toPandas()
-    p_df["Moving_Average"] = moving_average
-    
-    ps_df = ps.DataFrame(p_df.head(nb_sample)) # Retourn un df de la taille du nb de sample donnée
-
-    return ps_df
+    return -1
 
 # Input : 2 Datasets, existing columns for both of them
-# Ouput : DataFrame with correlation value
-# => Methode Pearson utilisée pour la corrélation
+# Ouput : Float, correlation value
 # Plot associé : Scatter Plot
 
-def correlation_btw_stocks(df_1, df_2, col):
+######################## Regler le probleme INDEX en parametre
 
-    pdf_1 = df_1.selectExpr("{} as D1".format(col)).toPandas()
-    pdf_2 = df_2.selectExpr("{} as D2".format(col)).toPandas()
+def correlation_btw_stocks(df_1 : DataFrame, df_2 : DataFrame, col1 : str, col2 : str):
 
-    p_df = pd.concat([pdf_1, pdf_2], axis=1)
-    
-    return p_df.corr(method="pearson")
+    window_spec = Window.orderBy()
+
+    df1_indexed = df_1.withColumn("index", row_number().over(window_spec))
+    df2_indexed = df_2.withColumn("index", row_number().over(window_spec))
+
+    df_joined = df1_indexed.join(df2_indexed, on="index", how="inner")
+
+    corr = values_correlation(df_joined, 0, col1, col2)
+
+    return corr
  
 # Input : df, period [w, m, y]
-# Output : PandaOnPyspark df [Period, Return Rate]
+# Output : Spark df [Period, Return Rate]
 # Return Rate : [[Close - Open]/Open] * 100
 # Plot associé : Linear Chart
 
-def return_rate(df, period):
+def return_rate(df : DataFrame, period : str):
 
     if period in ["w", "m", "y"]:
 
@@ -282,7 +285,7 @@ def return_rate(df, period):
             if abs(diff) >= timedelta(days=nb_samples) :
                 trigger = True
                 rate = ((row.Close - init_open)/init_open) * 100
-                key = f"{init_date} to {row.Date}"
+                key = row.Date
                 dictio[key] = rate
                 init_date = row.Date
                 init_open = row.Open
@@ -290,28 +293,56 @@ def return_rate(df, period):
         if trigger == False:
             print("[INFO] -> Period too large to be used on this dataset")
             return -2 
-        ps_df = ps.DataFrame(list(dictio.items()), columns=["Period", "Return_Rate_(%)"])
+        
+        schema = StructType([
+        StructField("Period", DateType(), True),
+        StructField("Return_Rate(%)", FloatType(), True)
+        ])
+        
+        data = [(k, float(v)) for k, v in dictio.items()]
 
-        return ps_df
+        s_df = spark.createDataFrame(data, schema=schema)
+        #s_df.show()
+
+        return s_df
+
     else :
         print("[INFO] -> can't take parameter period in charge")
         return -1
 
 # Bénéfice Maximum sur une période donnée
-# Retourne un PS DataFrame
+# Retourne un Spark DataFrame
 
-def max_return_rate(df, period):
-    ps_df = return_rate(df, period)
-    s_df = ps_df.to_spark()
+def max_return_rate(df : DataFrame, period : str):
+    s_df = return_rate(df, period)
 
-    return ps.DataFrame(s_df.select(F.max("Return_Rate_(%)").alias("Max_Return_Rate")))
+    s_df_max = s_df.select(F.max("Return_Rate(%)").alias("Max_Return_Rate"))
 
-def variation_stocks_volume(df, period):
+    s_df_max.show()
+
+    return s_df_max
+
+
+# Input : df, nombres d'actions détenues
+# Output : PS Dataframe avec col Revenus
+
+def dividend_return(df : DataFrame, stocks_own : float):
+
+    s_df_revenues = df.withColumn("Revenues", F.col("Dividends") * stocks_own)
+
+    s_df_revenues.show()
+
+    return s_df_revenues
+
+
+
+########### A OPTIMISER###########
+def variation_stocks_volume(df : DataFrame, period_sample : str) :
 
     init_vol = df.select("Volume").first()[0]
     init_Date = df.select("Date").first()[0]
 
-    nb_samples = period_to_day(period)
+    nb_samples = period_to_day(period_sample)
     dictio = {}
  
     for pos, row in enumerate(df.collect()):
@@ -321,15 +352,15 @@ def variation_stocks_volume(df, period):
             init_vol = row.Volume
             init_Date = row.Date
     
-    p_df = pd.DataFrame(list(dictio.items()), columns=["Period", "Variation_Volume"])
-    ps_df = ps.DataFrame(p_df)
-
-    bar_plot(p_df["Period"], p_df["Variation_Volume"])
-
-    print(ps_df)
-
-    return ps_df
+    schema = StructType([
+    StructField("Period", DateType(), True),
+    StructField("Variation_Stock_Volume", FloatType(), True)
+    ])
         
+    data = [(k, float(v)) for k, v in dictio.items()]
 
+    s_df = spark.createDataFrame(data, schema=schema)
+        
+    s_df.show()
 
-
+    return s_df
