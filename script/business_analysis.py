@@ -1,16 +1,10 @@
 import numpy as np
 
-import pandas as pd
-
-import pyspark.pandas as ps
 from datetime import timedelta
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, DateType
 from pyspark.sql import Window
 
-
-
-from pyspark.sql.functions import avg, month, year,lit, udf, row_number
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
@@ -18,109 +12,36 @@ from script.visualisation import bar_plot, linear_plot,streamlit_test
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
-def period_to_day(string : str):
-    if string == "w" :
-        return 7
-    elif string == "m":
-        return 30
-    elif string == "y":
-        return 365
 
-    else : 
-        print("[INFO] -> Mistake in the given string ")
-        return -1
+# Input : Date until the result
+# str -> Open ou Close
+# Output : DataFrame (Average_STR_Price($))
+
+def avg_price_until(df : DataFrame, until : DateType, field : str):
+    return df.filter(F.col('Date') == until).agg(F.avg(field).alias(f"Average_{field}_Price_($)"))
+
 
 # Input : period -> w for weekly, y for yearly, m for monthly 
 # str -> Open ou Close
-# Output : DataFrame (Period, Average_STR_Price($))
-# Plot associé : Linear Chart
- 
-def avg_price(df : DataFrame, period : str, str : str):
+# Output : DataFrame (Average_STR_Price($))
 
-    trigger = False
-  
-    if str in ["Open", "Close"] and period in ["w", "m", "y"]:
-        
-        nb_samples = period_to_day(period)
-        
-        initDate = df.select("Date").first()[0]
-        
-        tmp = []
-        dictio = {}
-
-        for row in df.collect():
-            
-            diff = row.Date - initDate
-            
-            if abs(diff.days) < nb_samples :
-                tmp.append(getattr(row, str))
-            else :
-                trigger = True
-                dictio[row.Date] = np.round(np.average(tmp), 3)
-                tmp = []
-                initDate = row.Date
-
-        if trigger == False :
-            print("[INFO] -> Dataset too small to analyze for the given period")
-            return -1
-        
-        schema = StructType([
-            StructField("Period", DateType(), True),
-            StructField(f"Average_{str}_Price($)", FloatType(), True)
-            ])
-        
-        data = [(k, float(v)) for k, v in dictio.items()]
-
-        s_df = spark.createDataFrame(data, schema=schema)
-        s_df.show()
-
-        #linear_plot(s_df["Period"].to_pandas(), s_df[f"Average_{str}_Price($)"].to_pandas(), period, str)
-
-        return s_df
-    else : 
-        print("[INFO] -> Error in one of the parameters, please give (period : w, y, m and existing column for str)")
-        return -1
-
-# Fonction utile pour labelisation des mois
-
-def get_month_name(month_number : int, year):
-    months = [
-        "", 
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sept",
-        "Oct",
-        "Nov",
-        "Dec"
-    ]
+def avg_price_period(df : DataFrame, period : str, field : str) :
     
-    if 1 <= month_number <= 12:
-        return months[month_number] + "-"+ str(year)
-    else : 
-        return -1
+    if period == "w" :
+        df_week = df.withColumn('week_nb', F.weekofyear('Date'))
+        df_grouped = df_week.groupBy('week_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("week_nb").asc())
+    elif period == "m" :
+        df_month = df.withColumn('month_nb', F.month('Date'))
+        df_grouped = df_month.groupBy('month_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("month_nb").asc())
+    elif period == "y" :
+        df_year = df.withColumn('year_nb', F.year('Date'))
+        df_grouped = df_year.groupBy('year_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("year_nb").asc())
 
-# Mesure variation day to day
-# Variation : CLOSE PRICE - OPEN PRICE
-# Return a spark dataframe
+    df_grouped.show()
 
-def dtd_stock_variation(df : DataFrame):
+    df_grouped = df_grouped.fillna(0)
 
-    def variation(a, b):
-        return b-a
-    
-    variation_udf = udf(variation, FloatType())
-    
-    s_df = df.withColumn("Stock_Variation", variation_udf(F.col("Close"), F.col("Open")))
-    
-    #s_df.show()
-
-    return s_df
+    return df_grouped
         
 # Mesure des variations pour chaque mois d'une colonne donnée
 # str : "Volume", "Open", "Close"
@@ -128,203 +49,179 @@ def dtd_stock_variation(df : DataFrame):
 # Return: spark dataframe
 # Plot associé : Linear Chart
 
-def monthly_stock_variation(df : DataFrame, nb_of_month : int = None):
+def stock_variation(df : DataFrame, period : str) :
     
-
-    init_date = df.select("Date").first()[0]
-    init_str = df.select("Open").first()[0]
-
-    stock = {}
-
-    counter = 0
-
-    for pos, row in enumerate(df.collect()):
-        
-        diff = row.Date - init_date
-
-        if abs(diff) >= timedelta(days = 30) :
-            
-            counter += 1
-            val_beg = init_str
-
-            val_fin = getattr(row, "Close")
-
-            stock[row.Date] = np.round(val_fin - val_beg, 3)
-
-            if counter == nb_of_month :
-                break
-
-            init_date= row.Date
-            init_str = getattr(row, "Open")
-
-        if pos+1 == len(df.collect()):
-
-                val_beg = init_str
-                val_fin = getattr(row, "Close")
-
-                stock[row.Date] = np.round(val_fin - val_beg, 3)
+    df = df.orderBy(F.col('Date').desc())
+    window = Window.orderBy('Date')
     
+    if period == 'd' :
+        df_next = df.withColumn('next', F.lead('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
+    
+    elif period == 'm':
 
-    schema = StructType([
-        StructField("Period", DateType(), True),
-        StructField(f"Stock_Variation_($)", FloatType(), True)
-    ])
+        df_month = df.withColumn('month_nb', F.month('Date'))
+        df_year = df_month.withColumn('year_nb', F.year('Date'))
+
+        df_drop = df_year.dropDuplicates(["month_nb", "year_nb"]).select(["Open", 'Date', 'month_nb', 'year_nb']).orderBy(F.col('Date').desc())
+        df_next = df_drop.withColumn('next', F.lead('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
+
+    elif period == 'y' :
         
-    data = [(k, float(v)) for k, v in stock.items()]
+        df_year = df.withColumn('year_nb', F.year('Date'))
+        
+        df_drop = df_year.dropDuplicates(["year_nb"]).select(["Open", 'Date','year_nb']).orderBy(F.col('Date').desc())
+        df_next = df_drop.withColumn('next', F.lead('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
 
-    s_df = spark.createDataFrame(data, schema=schema)
-    s_df.show()
+    
+    df_variation = df_variation.fillna(0) # Handle NULL values on the first row
 
-    return s_df
+    return df_variation
+
+
+# Computation of the Rate of the return on a daily interval
+def return_computation(init_val, current_val):
+    return ((current_val - init_val)/init_val)*100
+
+
+# Rate of the return on a daily interval
+def daily_return(df : DataFrame):
+
+    return df.withColumn('Daily_Return', return_computation(F.col('Close'), F.col('Open')))
 
 # Mesure le benefice max sur d'un DF
 #Retourn un dataframe spark
 
 def max_daily_return(df : DataFrame):
 
-    s_df = dtd_stock_variation(df)
-    max_df = s_df.select(F.max("Stock_Variation").alias("Maximum_profit"))
+    dreturn_df = daily_return(df)
+    max_dreturn = dreturn_df.select(F.max("Daily_Return")).collect()[0][0]
 
-    max_df.show()
-    return max_df
+    return max_dreturn
 
-# Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : close-open)
+# Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : (close-open/open)*100)
 # period : w pour week, m pour month, y pour year
 # Return un dataframe spark
 # Plot associé : Linear Chart
 
+def period_return(df : DataFrame, period : str):
+    
+    df = df.orderBy(F.col('Date').desc())
+    window = Window.orderBy('Date')
+
+    if period == 'w': 
+        week_df =  df.withColumn('week_nb', F.weekofyear('Date'))
+        year_df = week_df.withColumn('year_nb', F.year('Date'))
+
+        drop_df = year_df.dropDuplicates(['week_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'week_nb', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Close(W+1)', F.lead('Close').over(window))
+        dreturn_df = window_df.withColumn('Weekly_Return', return_computation(F.col('Open'), F.col('Close(W+1)'))).select(['Date', 'Open', 'Close(W+1)', 'Weekly_Return']).orderBy(F.col('Date').desc())
+        
+    elif period == 'm' :
+        month_df =  df.withColumn('month_nb', F.month('Date'))
+        year_df = month_df.withColumn('year_nb', F.year('Date'))
+
+        drop_df = year_df.dropDuplicates(['month_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'month_nb', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Close(M+1)', F.lead('Close').over(window))
+        dreturn_df = window_df.withColumn('Monthly_Return', return_computation(F.col('Open'), F.col('Close(M+1)'))).select(['Date', 'Open', 'Close(M+1)', 'Monthly_Return']).orderBy(F.col('Date').desc())
+
+    elif period == 'y':
+
+        year_df = df.withColumn('year_nb', F.year('Date'))
+
+        drop_df = year_df.dropDuplicates(['year_nb']).select(['Date', 'Open', 'Close', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Close(Y+1)', F.lead('Close').over(window))
+        dreturn_df = window_df.withColumn('Yearly_Return', return_computation(F.col('Open'), F.col('Close(Y+1)'))).select(['Date', 'Open', 'Close(Y+1)', 'Yearly_Return']).orderBy(F.col('Date').desc())
+
+
+    return dreturn_df.fillna(0)     
+
+
 def avg_return(df : DataFrame, period : str):
 
-    if period in ["w", "m", "y"]:
-
-        df = df.sort("Date", ascending = True)
-        trigger = False
+    dreturn_df = daily_return(df).orderBy(F.col('Date').desc())
+    dreturn_df.printSchema()
     
-        tmp_df = dtd_stock_variation(df)
+    if period == 'w':
+        title = 'Weekly'
 
-        nb_sample = period_to_day(period)
-        init_date = tmp_df.select("Date").first()[0]
-        stock_var = {}
-        tmp_array = []
-    
-        for row in tmp_df.collect():
-            diff = init_date - row.Date
-            if abs(diff.days) < nb_sample:
-                tmp_array.append(row.Stock_Variation)
-            else :
-                trigger = True
-                key = row.Date
-                stock_var[key] = np.round(np.average(np.array(tmp_array)), 3)
-                init_date = row.Date
-                tmp_array = []
+        period_df =  dreturn_df.withColumn('week_nb', F.weekofyear('Date'))
+        year_df =  period_df.withColumn('year_nb', F.year('Date'))
+        df_grouped = year_df.groupBy(['week_nb', 'year_nb']).agg(F.avg("Daily_Return").alias(f"{title}_Return")).orderBy(F.col('year_nb').desc(), F.col('week_nb').desc())
 
-        if trigger == False :
-            print("[INFO] Given period too large for the dataset")
-            return -1
+    elif period == 'm':
+        title = 'Monthly'
+
+        period_df = dreturn_df.withColumn('month_nb', F.month('Date'))
+        year_df =  period_df.withColumn('year_nb', F.year('Date'))
+        df_grouped = year_df.groupBy(['month_nb', 'year_nb']).agg(F.avg('Daily_Return').alias(f"{title}_Return")).orderBy(F.col('year_nb').desc(), F.col('month_nb').desc())
+
+    elif period == 'y' : 
+        title = 'Yearly'
  
-        schema = StructType([
-        StructField("Period", DateType(), True),
-        StructField("Average_Stock_Variation_($)", FloatType(), True)
-        ])
-        
-        data = [(k, float(v)) for k, v in stock_var.items()]
+        period_df = dreturn_df.withColumn('year_nb', F.year('Date'))
+        df_grouped = period_df.groupBy('year_nb').agg(F.avg('Daily_Return').alias(f"{title}_Return")).orderBy(F.col('year_nb').desc())
 
-        s_df = spark.createDataFrame(data, schema=schema)
-        s_df.show()
-
-        return s_df
+    return df_grouped.fillna(0)
 
 
-# Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner
+# Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner sur [Date ; Date + nb_sample]
 # Output : RIEN
 
-def moving_average(df : DataFrame, given_col : str, nb_sample : int):
-    
-    pass
+def moving_average(df : DataFrame, field : str, nb_sample : int):
 
-    return -1
+    window = Window.orderBy('Date').rowsBetween(0, nb_sample-1)
 
-# Input : 2 Datasets, existing columns for both of them
-# Ouput : Float, correlation value
-# Plot associé : Scatter Plot
+    mov_df = df.withColumn('Moving_Average', F.avg(field).over(window))
 
-######################## Regler le probleme INDEX en parametre
+    return mov_df.fillna(0)
 
-def correlation_btw_stocks(df_1 : DataFrame, df_2 : DataFrame, col1 : str, col2 : str):
-
-    window_spec = Window.orderBy()
-
-    df1_indexed = df_1.withColumn("index", row_number().over(window_spec))
-    df2_indexed = df_2.withColumn("index", row_number().over(window_spec))
-
-    df_joined = df1_indexed.join(df2_indexed, on="index", how="inner")
-
-    corr = values_correlation(df_joined, 0, col1, col2)
-
-    return corr
  
-# Input : df, period [w, m, y]
+# Input : df, period [w, m, y], Purchase_Cost
 # Output : Spark df [Period, Return Rate]
-# Return Rate : [[Close - Open]/Open] * 100
-# Plot associé : Linear Chart
+# Return Rate : [[Close_Benefice - Open_Cost]/Open_Cost] * 100
 
-def return_rate(df : DataFrame, period : str):
+def rrate_computation(open_price, final_price, nb_stock):
+    init_val = open_price*nb_stock
+    final_val = final_price*nb_stock
+    return ((final_val-init_val)/init_val)*100
 
-    if period in ["w", "m", "y"]:
+def return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int) :
+    
+    sub_df = df.filter((F.col('Date') >= on) & (F.col('Date') <= until))
+    rrate_df = sub_df.withColumn('Return_Rate(%)', rrate_computation(F.col('Open'), F.col('Close'), nb_stock))
 
-        nb_samples = period_to_day(period)
-
-        init_date = df.select("Date").first()[0]
-        init_open = df.select("Open").first()[0]
-
-        dictio = {}
-        trigger = False
-
-        for row in df.collect():
-            diff = row.Date - init_date
-            if abs(diff) >= timedelta(days=nb_samples) :
-                trigger = True
-                rate = ((row.Close - init_open)/init_open) * 100
-                key = row.Date
-                dictio[key] = rate
-                init_date = row.Date
-                init_open = row.Open
-
-        if trigger == False:
-            print("[INFO] -> Period too large to be used on this dataset")
-            return -2 
-        
-        schema = StructType([
-        StructField("Period", DateType(), True),
-        StructField("Return_Rate(%)", FloatType(), True)
-        ])
-        
-        data = [(k, float(v)) for k, v in dictio.items()]
-
-        s_df = spark.createDataFrame(data, schema=schema)
-        #s_df.show()
-
-        return s_df
-
-    else :
-        print("[INFO] -> can't take parameter period in charge")
-        return -1
+    return rrate_df
 
 # Bénéfice Maximum sur une période donnée
 # Retourne un Spark DataFrame
 
-def max_return_rate(df : DataFrame, period : str):
-    s_df = return_rate(df, period)
+def max_return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int):
+    s_df = return_rate(df, on, until, nb_stock)
 
-    s_df_max = s_df.select(F.max("Return_Rate(%)").alias("Max_Return_Rate"))
+    return s_df.select(F.max("Return_Rate(%)")).collect()[0][0]
 
-    s_df_max.show()
 
-    return s_df_max
+def correlation_btw_stocks(df1 : DataFrame, df2 : DataFrame, col1: str, col2 : str):
+
+    window_1 = Window.orderBy('Date_1')
+    window_2 = Window.orderBy('Date_2')
+
+    df1 = df1.select([F.col(col).alias(f"{col}_1") for col in df1.columns])
+    df2 = df2.select([F.col(col).alias(f"{col}_2") for col in df2.columns])
+
+    index_df1 = df1.withColumn('index', F.row_number().over(window_1))
+    index_df2 = df2.withColumn('index', F.row_number().over(window_2))
+
+    joined_df = index_df1.join(index_df2, on="index", how="inner")
+
+    return values_correlation(joined_df, col1+'_1', col2+'_2')
 
 
 # Input : df, nombres d'actions détenues
-# Output : PS Dataframe avec col Revenus
+# Output : Spark Dataframe avec col Revenus
 
 def dividend_return(df : DataFrame, stocks_own : float):
 
@@ -334,33 +231,3 @@ def dividend_return(df : DataFrame, stocks_own : float):
 
     return s_df_revenues
 
-
-
-########### A OPTIMISER###########
-def variation_stocks_volume(df : DataFrame, period_sample : str) :
-
-    init_vol = df.select("Volume").first()[0]
-    init_Date = df.select("Date").first()[0]
-
-    nb_samples = period_to_day(period_sample)
-    dictio = {}
- 
-    for pos, row in enumerate(df.collect()):
-        diff = row.Date - init_Date
-        if abs(diff.days) >= nb_samples or pos +1 == len(df.collect()):
-            dictio[row.Date] = np.round((row.Volume - init_vol), 3)
-            init_vol = row.Volume
-            init_Date = row.Date
-    
-    schema = StructType([
-    StructField("Period", DateType(), True),
-    StructField("Variation_Stock_Volume", FloatType(), True)
-    ])
-        
-    data = [(k, float(v)) for k, v in dictio.items()]
-
-    s_df = spark.createDataFrame(data, schema=schema)
-        
-    s_df.show()
-
-    return s_df
