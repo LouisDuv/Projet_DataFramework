@@ -1,16 +1,21 @@
-import glob
 import os
-import yfinance as yf
+os.environ["PYARROW_IGNORE_TIMEZONE"] = "1"
 
-from pyspark.sql.functions import avg, month, year, day, lit
+import numpy as np
+import glob
+
 from pyspark.sql import SparkSession
-import pyspark.pandas as ps
+from pyspark.sql import functions as sf
+from pyspark.sql.types import StructType, StructField, StringType, FloatType, DateType, NumericType
+from pyspark.sql import DataFrame
+from pyspark.sql import Window
+from typing import List
+from datetime import date
 
 from script.DataFrame import DataframeClass
-
+from script.pages.homepage import *
 from script.business_analysis import *
-from script.exploration import values_correlation, period_btw_data, head_and_tail_40
-from datetime import date
+from collections import Counter
 
 
 
@@ -31,7 +36,7 @@ from datetime import date
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
-dataframe_obj = DataframeClass()
+dataframe_obj = DataframeClass(spark=spark)
 
 csv_folder_path = 'Stocks_Price'
 csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
@@ -39,6 +44,7 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
 
-result =  correlation_btw_stocks(data_dfs[3], data_dfs[2], 'Open', 'Open')
+df = daily_return(data_dfs[5])
+p_df = df.toPandas()
 
-print(result)
+home_page(df['Date'], df['Daily_Return'], 'l')

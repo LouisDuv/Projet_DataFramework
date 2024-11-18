@@ -8,7 +8,7 @@ from pyspark.sql import Window
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from script.exploration import values_correlation
-from script.visualisation import bar_plot, linear_plot,streamlit_test
+from script.pages.homepage import *
 
 spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
