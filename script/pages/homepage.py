@@ -12,11 +12,7 @@ st.set_page_config(
     layout= "wide" 
 )
 
-
-
 def home_page(x, y, type_graph : str):
-
-    text3 = 'big_compagnies' * 400
     
     left_container, center_container, right_container = st.columns([2, 5, 3])
     with left_container: 

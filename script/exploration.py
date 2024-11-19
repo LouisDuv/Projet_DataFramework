@@ -38,7 +38,6 @@ def period_btw_data(df):
 
     return diff.days
 
-
 def most_common_element(arr):
     count = Counter(arr)
     most_common = count.most_common(1)  #Renvoie une liste de tuple (élément, occurrences)

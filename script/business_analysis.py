@@ -10,38 +10,50 @@ from pyspark.sql import functions as F
 from script.exploration import values_correlation
 from script.pages.homepage import *
 
-spark = SparkSession.builder.appName("StockVariation").getOrCreate()
+from datetime import datetime
 
+spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
 # Input : Date until the result
 # str -> Open ou Close
 # Output : DataFrame (Average_STR_Price($))
 
-def avg_price_until(df : DataFrame, until : DateType, field : str):
-    return df.filter(F.col('Date') == until).agg(F.avg(field).alias(f"Average_{field}_Price_($)"))
+def ask_interval_time():
+    date_format = '%Y-%m-%d'
+    print("Define the interval of time you want to analyze (format : YYYY-MM-DD)\n")
+    
+    from_date = input("Start at :")
+    from_date = datetime.strptime(from_date, date_format)
+    
+    to_date = input("End at :")
+    to_date = datetime.strptime(to_date, date_format)
+    
+    return (from_date, to_date)
 
+
+def avg_price_until(df : DataFrame, until : DateType, field : str) -> DataFrame:
+    return df.filter(F.col('Date') <= until).agg(F.avg(field).alias(f"Average_{field}_Price_($)"))
 
 # Input : period -> w for weekly, y for yearly, m for monthly 
 # str -> Open ou Close
 # Output : DataFrame (Average_STR_Price($))
 
-def avg_price_period(df : DataFrame, period : str, field : str) :
+def avg_price_period(df : DataFrame, period : str, field : str) -> DataFrame:
     
+    df_week = df.withColumn('week_nb', F.weekofyear('Date'))
+    df_month = df_week.withColumn('month_nb', F.month('Date'))
+    df_year =  df_month.withColumn('year', F.year('Date'))
+
     if period == "w" :
-        df_week = df.withColumn('week_nb', F.weekofyear('Date'))
-        df_grouped = df_week.groupBy('week_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("week_nb").asc())
+        df_grouped = df_year.groupBy(['week_nb', 'year']).agg(F.avg(field).alias("Average_Price")).orderBy(F.col('year').desc(), F.col("week_nb").desc())
     elif period == "m" :
-        df_month = df.withColumn('month_nb', F.month('Date'))
-        df_grouped = df_month.groupBy('month_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("month_nb").asc())
+        df_grouped = df_year.groupBy(['month_nb', 'year']).agg(F.avg(field).alias("Average_Price")).orderBy(F.col('year').desc(), F.col("month_nb").desc())
     elif period == "y" :
-        df_year = df.withColumn('year_nb', F.year('Date'))
-        df_grouped = df_year.groupBy('year_nb').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("year_nb").asc())
+        df_grouped = df_year.groupBy('year').agg(F.avg(field).alias("Average_Price")).orderBy(F.col("year").desc())
+    else : 
+        return -1
 
-    df_grouped.show()
-
-    df_grouped = df_grouped.fillna(0)
-
-    return df_grouped
+    return df_grouped.fillna(0)
         
 # Mesure des variations pour chaque mois d'une colonne donnée
 # str : "Volume", "Open", "Close"
@@ -49,54 +61,52 @@ def avg_price_period(df : DataFrame, period : str, field : str) :
 # Return: spark dataframe
 # Plot associé : Linear Chart
 
-def stock_variation(df : DataFrame, period : str) :
+def stock_variation(df : DataFrame, period : str) -> DataFrame :
     
     df = df.orderBy(F.col('Date').desc())
     window = Window.orderBy('Date')
-    
+
+    df_week = df.withColumn('week_nb', F.weekofyear('Date'))
+    df_month = df_week.withColumn('month_nb', F.month('Date'))
+    df_year =  df_month.withColumn('year', F.year('Date'))
+
     if period == 'd' :
-        df_next = df.withColumn('next', F.lead('Open').over(window))
-        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
+
+        df_next = df.withColumn('next', F.lag('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('Open') - F.col('next')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
     
     elif period == 'm':
 
-        df_month = df.withColumn('month_nb', F.month('Date'))
-        df_year = df_month.withColumn('year_nb', F.year('Date'))
-
-        df_drop = df_year.dropDuplicates(["month_nb", "year_nb"]).select(["Open", 'Date', 'month_nb', 'year_nb']).orderBy(F.col('Date').desc())
-        df_next = df_drop.withColumn('next', F.lead('Open').over(window))
-        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
+        df_drop = df_year.dropDuplicates(["month_nb", "year"]).select(["Open", 'Date', 'month_nb', 'year']).orderBy(F.col('Date').desc())
+        df_next = df_drop.withColumn('next', F.lag('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('Open') - F.col('next')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
 
     elif period == 'y' :
         
-        df_year = df.withColumn('year_nb', F.year('Date'))
-        
-        df_drop = df_year.dropDuplicates(["year_nb"]).select(["Open", 'Date','year_nb']).orderBy(F.col('Date').desc())
-        df_next = df_drop.withColumn('next', F.lead('Open').over(window))
-        df_variation = df_next.withColumn('Variation_Open_Price', F.col('next') - F.col('Open')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
+        df_drop = df_year.dropDuplicates(["year"]).select(["Open", 'Date','year']).orderBy(F.col('Date').desc())
+        df_next = df_drop.withColumn('next', F.lag('Open').over(window))
+        df_variation = df_next.withColumn('Variation_Open_Price', F.col('Open') - F.col('next')).select('Date', 'Variation_Open_Price').orderBy(F.col("Date").desc())
 
-    
-    df_variation = df_variation.fillna(0) # Handle NULL values on the first row
+    return df_variation.fillna(0)
 
-    return df_variation
+def stock_variation_until(df : DataFrame, period : str) -> DataFrame:
+    on, until = ask_interval_time()
 
+    filtered_df = df.filter((F.col('Date') >= on) & (F.col('Date') <= until))
+
+    return stock_variation(filtered_df, period)
 
 # Computation of the Rate of the return on a daily interval
 def return_computation(init_val, current_val):
     return ((current_val - init_val)/init_val)*100
 
 
-# Rate of the return on a daily interval
-def daily_return(df : DataFrame):
-
-    return df.withColumn('Daily_Return', return_computation(F.col('Close'), F.col('Open')))
-
 # Mesure le benefice max sur d'un DF
 #Retourn un dataframe spark
 
 def max_daily_return(df : DataFrame):
 
-    dreturn_df = daily_return(df)
+    dreturn_df = period_return(df)
     max_dreturn = dreturn_df.select(F.max("Daily_Return")).collect()[0][0]
 
     return max_dreturn
@@ -111,7 +121,11 @@ def period_return(df : DataFrame, period : str):
     df = df.orderBy(F.col('Date').desc())
     window = Window.orderBy('Date')
 
-    if period == 'w': 
+    if period == 'd' :
+        
+        dreturn_df = df.withColumn('Daily_Return', return_computation(F.col('Open'), F.col('Close')))
+
+    elif period == 'w': 
         week_df =  df.withColumn('week_nb', F.weekofyear('Date'))
         year_df = week_df.withColumn('year_nb', F.year('Date'))
 
@@ -138,10 +152,15 @@ def period_return(df : DataFrame, period : str):
 
     return dreturn_df.fillna(0)     
 
+def period_return_until(df : DataFrame, on : DateType, until : DateType, period : str) -> DataFrame:
+
+    filtered_df = df.filter((F.col('Date')>= on) & (F.col('Date') <= until))
+
+    return period_return(filtered_df, period)
 
 def avg_return(df : DataFrame, period : str):
 
-    dreturn_df = daily_return(df).orderBy(F.col('Date').desc())
+    dreturn_df = period_return(df, 'd').orderBy(F.col('Date').desc())
     dreturn_df.printSchema()
     
     if period == 'w':

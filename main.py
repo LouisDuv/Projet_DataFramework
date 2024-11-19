@@ -44,7 +44,11 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
 
-df = daily_return(data_dfs[5])
-p_df = df.toPandas()
+#df = stock_variation_until(data_dfs[5], 'm')
 
-home_page(df['Date'], df['Daily_Return'], 'l')
+#df.show(15)
+
+fr, to = ask_interval_time()
+
+print(fr)
+print(to)
