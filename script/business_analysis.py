@@ -18,18 +18,7 @@ spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 # str -> Open ou Close
 # Output : DataFrame (Average_STR_Price($))
 
-def ask_interval_time():
-    date_format = '%Y-%m-%d'
-    print("Define the interval of time you want to analyze (format : YYYY-MM-DD)\n")
-    
-    from_date = input("Start at :")
-    from_date = datetime.strptime(from_date, date_format)
-    
-    to_date = input("End at :")
-    to_date = datetime.strptime(to_date, date_format)
-    
-    return (from_date, to_date)
-
+#PLOT : BOX PLOT (LINEAR PLOT SINON MAIS BOX PLOT EST ORIGINAL !)
 
 def avg_price_until(df : DataFrame, until : DateType, field : str) -> DataFrame:
     return df.filter(F.col('Date') <= until).agg(F.avg(field).alias(f"Average_{field}_Price_($)"))
@@ -38,6 +27,7 @@ def avg_price_until(df : DataFrame, until : DateType, field : str) -> DataFrame:
 # str -> Open ou Close
 # Output : DataFrame (Average_STR_Price($))
 
+#PLOT : BOX PLOT (LINEAR PLOT SINON MAIS BOX PLOT EST ORIGINAL !)
 def avg_price_period(df : DataFrame, period : str, field : str) -> DataFrame:
     
     df_week = df.withColumn('week_nb', F.weekofyear('Date'))
@@ -59,8 +49,9 @@ def avg_price_period(df : DataFrame, period : str, field : str) -> DataFrame:
 # str : "Volume", "Open", "Close"
 # Variation : DERNIER JOUR DU MOIS CLOS - PREMIER JOUR DU MOIS OPEN
 # Return: spark dataframe
-# Plot associé : Linear Chart
 
+
+# PLOT : LINEAR PLOT
 def stock_variation(df : DataFrame, period : str) -> DataFrame :
     
     df = df.orderBy(F.col('Date').desc())
@@ -89,14 +80,16 @@ def stock_variation(df : DataFrame, period : str) -> DataFrame :
 
     return df_variation.fillna(0)
 
-def stock_variation_until(df : DataFrame, period : str) -> DataFrame:
-    on, until = ask_interval_time()
+
+# PLOT : LINEAR PLOT
+def stock_variation_until(df : DataFrame, on : DateType, until : DateType, period : str) -> DataFrame:
 
     filtered_df = df.filter((F.col('Date') >= on) & (F.col('Date') <= until))
 
     return stock_variation(filtered_df, period)
 
 # Computation of the Rate of the return on a daily interval
+# No plot
 def return_computation(init_val, current_val):
     return ((current_val - init_val)/init_val)*100
 
@@ -104,9 +97,10 @@ def return_computation(init_val, current_val):
 # Mesure le benefice max sur d'un DF
 #Retourn un dataframe spark
 
-def max_daily_return(df : DataFrame):
+# PAS DE PLOT, METTRE DANS UNE CASE INFORMATIVE => fonction qui ressort un int 
+def max_return(df : DataFrame, period : str):
 
-    dreturn_df = period_return(df)
+    dreturn_df = period_return(df, period)
     max_dreturn = dreturn_df.select(F.max("Daily_Return")).collect()[0][0]
 
     return max_dreturn
@@ -158,6 +152,7 @@ def period_return_until(df : DataFrame, on : DateType, until : DateType, period 
 
     return period_return(filtered_df, period)
 
+# LINEAR PLOT
 def avg_return(df : DataFrame, period : str):
 
     dreturn_df = period_return(df, 'd').orderBy(F.col('Date').desc())
@@ -189,6 +184,7 @@ def avg_return(df : DataFrame, period : str):
 # Input : df, colonne à examiner (Open, Close, etc), nombre de données à moyenner sur [Date ; Date + nb_sample]
 # Output : RIEN
 
+#LINEAR PLOT
 def moving_average(df : DataFrame, field : str, nb_sample : int):
 
     window = Window.orderBy('Date').rowsBetween(0, nb_sample-1)
@@ -207,6 +203,8 @@ def rrate_computation(open_price, final_price, nb_stock):
     final_val = final_price*nb_stock
     return ((final_val-init_val)/init_val)*100
 
+
+# LINEAR PLOT
 def return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int) :
     
     sub_df = df.filter((F.col('Date') >= on) & (F.col('Date') <= until))
@@ -217,11 +215,15 @@ def return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int
 # Bénéfice Maximum sur une période donnée
 # Retourne un Spark DataFrame
 
+# PEUT ETRE COMPARER LES MAX RETURN RATE DES ENTREPRISES EN BAR CHART ? 
 def max_return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int):
+    
     s_df = return_rate(df, on, until, nb_stock)
 
     return s_df.select(F.max("Return_Rate(%)")).collect()[0][0]
 
+
+#PLOT : SCATTER PLOT
 
 def correlation_btw_stocks(df1 : DataFrame, df2 : DataFrame, col1: str, col2 : str):
 
