@@ -20,8 +20,9 @@ spark = SparkSession.builder.appName("StockVariation").getOrCreate()
 
 #PLOT : BOX PLOT (LINEAR PLOT SINON MAIS BOX PLOT EST ORIGINAL !)
 
-def avg_price_until(df : DataFrame, until : DateType, field : str) -> DataFrame:
-    return df.filter(F.col('Date') <= until).agg(F.avg(field).alias(f"Average_{field}_Price_($)"))
+def avg_price_until(df : DataFrame, on : DateType, until : DateType, field : str) -> DataFrame:
+    filtered_df = df.filter((F.col('Date') >= on) & (F.col('Date') <= until ))
+    return filtered_df.agg(F.avg(field).alias(f"Average_{field}_Price_($)")).collect()[0][0]
 
 # Input : period -> w for weekly, y for yearly, m for monthly 
 # str -> Open ou Close
