@@ -91,20 +91,10 @@ def stock_variation_until(df : DataFrame, on : DateType, until : DateType, perio
 
 # Computation of the Rate of the return on a daily interval
 # No plot
+
 def return_computation(init_val, current_val):
     return ((current_val - init_val)/init_val)*100
 
-
-# Mesure le benefice max sur d'un DF
-#Retourn un dataframe spark
-
-# PAS DE PLOT, METTRE DANS UNE CASE INFORMATIVE => fonction qui ressort un int 
-def max_return(df : DataFrame, period : str):
-
-    dreturn_df = period_return(df, period)
-    max_dreturn = dreturn_df.select(F.max("Daily_Return")).collect()[0][0]
-
-    return max_dreturn
 
 # Determine la moyenne des rentabilites des actions sur une période donnée (rentabilité : (close-open/open)*100)
 # period : w pour week, m pour month, y pour year
@@ -126,7 +116,7 @@ def period_return(df : DataFrame, period : str):
 
         drop_df = year_df.dropDuplicates(['week_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'week_nb', 'year_nb']).orderBy(F.col('Date').desc())
         window_df = drop_df.withColumn('Close(W+1)', F.lead('Close').over(window))
-        dreturn_df = window_df.withColumn('Weekly_Return', return_computation(F.col('Open'), F.col('Close(W+1)'))).select(['Date', 'Open', 'Close(W+1)', 'Weekly_Return']).orderBy(F.col('Date').desc())
+        dreturn_df = window_df.withColumn('Benefit', return_computation(F.col('Open'), F.col('Close(W+1)'))).select(['Date', 'Open', 'Close(W+1)', 'Benefit']).orderBy(F.col('Date').desc())
         
     elif period == 'm' :
         month_df =  df.withColumn('month_nb', F.month('Date'))
@@ -134,7 +124,7 @@ def period_return(df : DataFrame, period : str):
 
         drop_df = year_df.dropDuplicates(['month_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'month_nb', 'year_nb']).orderBy(F.col('Date').desc())
         window_df = drop_df.withColumn('Close(M+1)', F.lead('Close').over(window))
-        dreturn_df = window_df.withColumn('Monthly_Return', return_computation(F.col('Open'), F.col('Close(M+1)'))).select(['Date', 'Open', 'Close(M+1)', 'Monthly_Return']).orderBy(F.col('Date').desc())
+        dreturn_df = window_df.withColumn('Benefit', return_computation(F.col('Open'), F.col('Close(M+1)'))).select(['Date', 'Open', 'Close(M+1)', 'Benefit']).orderBy(F.col('Date').desc())
 
     elif period == 'y':
 
@@ -142,7 +132,7 @@ def period_return(df : DataFrame, period : str):
 
         drop_df = year_df.dropDuplicates(['year_nb']).select(['Date', 'Open', 'Close', 'year_nb']).orderBy(F.col('Date').desc())
         window_df = drop_df.withColumn('Close(Y+1)', F.lead('Close').over(window))
-        dreturn_df = window_df.withColumn('Yearly_Return', return_computation(F.col('Open'), F.col('Close(Y+1)'))).select(['Date', 'Open', 'Close(Y+1)', 'Yearly_Return']).orderBy(F.col('Date').desc())
+        dreturn_df = window_df.withColumn('Benefit', return_computation(F.col('Open'), F.col('Close(Y+1)'))).select(['Date', 'Open', 'Close(Y+1)', 'Benefit']).orderBy(F.col('Date').desc())
 
 
     return dreturn_df.fillna(0)     
@@ -213,16 +203,6 @@ def return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int
 
     return rrate_df
 
-# Bénéfice Maximum sur une période donnée
-# Retourne un Spark DataFrame
-
-# PEUT ETRE COMPARER LES MAX RETURN RATE DES ENTREPRISES EN BAR CHART ? 
-def max_return_rate(df : DataFrame, on : DateType , until : DateType, nb_stock : int):
-    
-    s_df = return_rate(df, on, until, nb_stock)
-
-    return s_df.select(F.max("Return_Rate(%)")).collect()[0][0]
-
 
 #PLOT : SCATTER PLOT
 
@@ -252,4 +232,68 @@ def dividend_return(df : DataFrame, stocks_own : float):
     s_df_revenues.show()
 
     return s_df_revenues
+
+
+
+##############################
+#### MODIF DES FONCIONS########
+
+# Mesure le benefice max sur parmi tous les DF
+#Retourn un dataframe spark
+
+# PAS DE PLOT, METTRE DANS UNE CASE INFORMATIVE => fonction qui ressort un int 
+def max_return(df_list : DataframeClass, period : str):
+    
+    max_r = []
+
+    for df in df_list :
+        dreturn_df = period_return(df, period)
+        max_r.append(dreturn_df.select(F.max("Benefit")).collect()[0][0])
+
+    return max_r
+
+def max_return_rate(df_list : DataframeClass, period : str, nb_stock : int):
+    max_rr = []
+
+    for df in df_list :
+        s_df = return_rate_period(df, period, nb_stock)
+        max_rr.append(s_df.select(F.max("Return_Rate(%)")).collect()[0][0])        
+
+    return max_rr
+
+def return_rate_period(df : DataFrame, period : str, nb_stocks : int)-> DataFrame:
+    
+    df = df.orderBy(F.col('Date').desc())
+    window = Window.orderBy('Date')
+    
+    week_df =  df.withColumn('week_nb', F.weekofyear('Date'))
+    month_df =  week_df.withColumn('month_nb', F.month('Date'))
+    year_df = month_df.withColumn('year_nb', F.year('Date'))
+
+    if period == 'd' :
+        
+        dreturn_df = df.withColumn('Return_Rate(%)', rrate_computation(F.col('Open'), F.col('Close'), nb_stocks))
+
+    elif period == 'w': 
+ 
+        drop_df = year_df.dropDuplicates(['week_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'week_nb', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Open(W+1)', F.lag('Open').over(window))
+        dreturn_df = window_df.withColumn('Return_Rate(%)', rrate_computation(F.col('Open'), F.col('Open(W+1)'), nb_stocks)).select(['Date','Open', 'Open(W+1)','Return_Rate(%)']).orderBy(F.col('Date').desc())
+        
+    elif period == 'm' :
+
+        month_df =  year_df.withColumn('month_nb', F.month('Date'))
+
+        drop_df = month_df.dropDuplicates(['month_nb', 'year_nb']).select(['Date', 'Open', 'Close', 'month_nb', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Open(M+1)', F.lag('Open').over(window))
+        dreturn_df = window_df.withColumn('Return_Rate(%)', rrate_computation(F.col('Open'), F.col('Open(M+1)'), nb_stocks)).select(['Date', 'month_nb', 'Open', 'Open(M+1)', 'Return_Rate(%)']).orderBy(F.col('Date').desc())
+
+    elif period == 'y':
+
+        drop_df = year_df.dropDuplicates(['year_nb']).select(['Date', 'Open', 'Close', 'year_nb']).orderBy(F.col('Date').desc())
+        window_df = drop_df.withColumn('Open(Y+1)', F.lag('Open').over(window))
+        dreturn_df = window_df.withColumn('Return_Rate(%)', rrate_computation(F.col('Open'), F.col('Close'), nb_stocks)).select(['Date', 'year_nb', 'Open', 'Open(Y+1)', 'Return_Rate(%)']).orderBy(F.col('Date').desc())
+    
+    return dreturn_df.fillna(0)
+
 

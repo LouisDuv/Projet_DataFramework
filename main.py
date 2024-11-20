@@ -43,7 +43,6 @@ csv_files = glob.glob(os.path.join(csv_folder_path, "*.csv"))
 
 data_dfs = dataframe_obj.read_multiple_csv(csv_files)
 
+df = max_return_rate(data_dfs, 'y', 200)
 
-df = avg_price_until(data_dfs[5], on= date(2019,3, 10), until =  date(2023, 10, 20), field = 'Close')
-
-df.show(15)
+print(df)
